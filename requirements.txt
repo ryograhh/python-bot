@@ -6,4 +6,6 @@ requests
 python-telegram-bot
 python-dotenv
 pycryptodome
-pymongo
+pymongo[srv]
+certifi
+dnspython
