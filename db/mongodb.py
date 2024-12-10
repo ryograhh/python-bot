@@ -3,7 +3,6 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 import logging
-import ssl
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -18,18 +17,15 @@ DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
 class MongoDB:
     def __init__(self):
         try:
-            # Configure MongoDB client with Railway-friendly settings
+            # Configure MongoDB client with simpler settings
             self.client = MongoClient(
                 MONGO_URI,
                 serverSelectionTimeoutMS=30000,
                 connectTimeoutMS=30000,
                 socketTimeoutMS=30000,
-                connect=True,
                 retryWrites=True,
                 tls=True,
-                tlsAllowInvalidCertificates=True,
-                tlsInsecure=True,
-                directConnection=True
+                tlsAllowInvalidCertificates=True
             )
             
             # Test connection
@@ -75,7 +71,7 @@ class MongoDB:
         except Exception as e:
             logger.error(f"Error getting user: {str(e)}")
             # Attempt to reconnect
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             return self.get_user(user_id, username)
 
     def update_user_coins(self, user_id: str, amount: int) -> int:
@@ -89,7 +85,7 @@ class MongoDB:
             return result['coins'] if result else None
         except Exception as e:
             logger.error(f"Error updating coins: {str(e)}")
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             return self.update_user_coins(user_id, amount)
 
     def update_last_daily(self, user_id: str):
@@ -101,7 +97,7 @@ class MongoDB:
             )
         except Exception as e:
             logger.error(f"Error updating last daily: {str(e)}")
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             self.update_last_daily(user_id)
 
     def add_transaction(self, user_id: str, amount: int, type_: str, description: str):
@@ -117,7 +113,7 @@ class MongoDB:
             self.transactions.insert_one(transaction)
         except Exception as e:
             logger.error(f"Error adding transaction: {str(e)}")
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             self.add_transaction(user_id, amount, type_, description)
 
     def get_transactions(self, user_id: str, limit: int = 5) -> list:
@@ -129,7 +125,7 @@ class MongoDB:
             ).sort('created_at', -1).limit(limit))
         except Exception as e:
             logger.error(f"Error getting transactions: {str(e)}")
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             return self.get_transactions(user_id, limit)
 
     def find_user_by_username(self, username: str) -> dict:
@@ -140,7 +136,7 @@ class MongoDB:
             })
         except Exception as e:
             logger.error(f"Error finding user: {str(e)}")
-            self.client = MongoClient(MONGO_URI)
+            self.__init__()
             return self.find_user_by_username(username)
 
     def __del__(self):

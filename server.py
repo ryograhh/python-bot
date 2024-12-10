@@ -31,8 +31,12 @@ def init_mongodb():
         # Create MongoDB client with proper settings
         client = MongoClient(
             MONGO_URI,
-            serverSelectionTimeoutMS=MONGO_TIMEOUT,
-            connectTimeoutMS=MONGO_TIMEOUT
+            serverSelectionTimeoutMS=30000,
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+            retryWrites=True,
+            tls=True,
+            tlsAllowInvalidCertificates=True
         )
         
         # Test connection
@@ -60,9 +64,6 @@ def init_mongodb():
         client.close()
         return True
         
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        logger.error(f"❌ MongoDB connection failed: {str(e)}")
-        return False
     except Exception as e:
         logger.error(f"❌ Error during MongoDB initialization: {str(e)}")
         return False
