@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 from dotenv import load_dotenv
 import logging
+import ssl
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -11,17 +12,24 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://biaronab:Yg1cxmqdHZgkjywD@cluster0.vm9kj.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
 
 class MongoDB:
     def __init__(self):
         try:
-            # Create MongoDB client with minimal configuration
+            # Configure MongoDB client with Railway-friendly settings
             self.client = MongoClient(
                 MONGO_URI,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000
+                serverSelectionTimeoutMS=30000,
+                connectTimeoutMS=30000,
+                socketTimeoutMS=30000,
+                connect=True,
+                retryWrites=True,
+                tls=True,
+                tlsAllowInvalidCertificates=True,
+                tlsInsecure=True,
+                directConnection=True
             )
             
             # Test connection
@@ -52,57 +60,88 @@ class MongoDB:
 
     def get_user(self, user_id: str, username: str = None) -> dict:
         """Get or create user"""
-        user = self.users.find_one({'user_id': user_id})
-        if not user:
-            user = {
-                'user_id': user_id,
-                'username': username or 'Unknown',
-                'coins': 0,
-                'last_daily': None,
-                'created_at': datetime.now()
-            }
-            self.users.insert_one(user)
-        return user
+        try:
+            user = self.users.find_one({'user_id': user_id})
+            if not user:
+                user = {
+                    'user_id': user_id,
+                    'username': username or 'Unknown',
+                    'coins': 0,
+                    'last_daily': None,
+                    'created_at': datetime.now()
+                }
+                self.users.insert_one(user)
+            return user
+        except Exception as e:
+            logger.error(f"Error getting user: {str(e)}")
+            # Attempt to reconnect
+            self.client = MongoClient(MONGO_URI)
+            return self.get_user(user_id, username)
 
     def update_user_coins(self, user_id: str, amount: int) -> int:
         """Update user's coin balance"""
-        result = self.users.find_one_and_update(
-            {'user_id': user_id},
-            {'$inc': {'coins': amount}},
-            return_document=True
-        )
-        return result['coins'] if result else None
+        try:
+            result = self.users.find_one_and_update(
+                {'user_id': user_id},
+                {'$inc': {'coins': amount}},
+                return_document=True
+            )
+            return result['coins'] if result else None
+        except Exception as e:
+            logger.error(f"Error updating coins: {str(e)}")
+            self.client = MongoClient(MONGO_URI)
+            return self.update_user_coins(user_id, amount)
 
     def update_last_daily(self, user_id: str):
         """Update user's last daily claim time"""
-        self.users.update_one(
-            {'user_id': user_id},
-            {'$set': {'last_daily': datetime.now()}}
-        )
+        try:
+            self.users.update_one(
+                {'user_id': user_id},
+                {'$set': {'last_daily': datetime.now()}}
+            )
+        except Exception as e:
+            logger.error(f"Error updating last daily: {str(e)}")
+            self.client = MongoClient(MONGO_URI)
+            self.update_last_daily(user_id)
 
     def add_transaction(self, user_id: str, amount: int, type_: str, description: str):
         """Add a transaction record"""
-        transaction = {
-            'user_id': user_id,
-            'amount': amount,
-            'type': type_,
-            'description': description,
-            'created_at': datetime.now()
-        }
-        self.transactions.insert_one(transaction)
+        try:
+            transaction = {
+                'user_id': user_id,
+                'amount': amount,
+                'type': type_,
+                'description': description,
+                'created_at': datetime.now()
+            }
+            self.transactions.insert_one(transaction)
+        except Exception as e:
+            logger.error(f"Error adding transaction: {str(e)}")
+            self.client = MongoClient(MONGO_URI)
+            self.add_transaction(user_id, amount, type_, description)
 
     def get_transactions(self, user_id: str, limit: int = 5) -> list:
         """Get user's transaction history"""
-        return list(self.transactions.find(
-            {'user_id': user_id},
-            {'_id': 0}
-        ).sort('created_at', -1).limit(limit))
+        try:
+            return list(self.transactions.find(
+                {'user_id': user_id},
+                {'_id': 0}
+            ).sort('created_at', -1).limit(limit))
+        except Exception as e:
+            logger.error(f"Error getting transactions: {str(e)}")
+            self.client = MongoClient(MONGO_URI)
+            return self.get_transactions(user_id, limit)
 
     def find_user_by_username(self, username: str) -> dict:
         """Find user by username (case insensitive)"""
-        return self.users.find_one({
-            'username': {'$regex': f'^{username}$', '$options': 'i'}
-        })
+        try:
+            return self.users.find_one({
+                'username': {'$regex': f'^{username}$', '$options': 'i'}
+            })
+        except Exception as e:
+            logger.error(f"Error finding user: {str(e)}")
+            self.client = MongoClient(MONGO_URI)
+            return self.find_user_by_username(username)
 
     def __del__(self):
         """Cleanup method to close MongoDB connection"""
