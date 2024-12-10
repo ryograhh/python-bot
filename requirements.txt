@@ -1,0 +1,9 @@
+asyncio
+aiofiles
+aiohttp
+flask
+requests
+python-telegram-bot
+python-dotenv
+pycryptodome
+mysql-connector-python
