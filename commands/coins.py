@@ -1,10 +1,8 @@
-# commands/coins.py
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
-import mysql.connector
 from datetime import datetime, timedelta
-from db.database import get_database_connection
+from storage.storage import storage
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for coins command - manages user coins"""
@@ -12,88 +10,61 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_parts = update.message.text.split()
         subcommand = message_parts[1].lower() if len(message_parts) > 1 else "balance"
         
-        user_id = update.effective_user.id
+        user_id = str(update.effective_user.id)
         username = update.effective_user.username or "Unknown"
         
-        connection = get_database_connection()
-        if not connection:
-            await update.message.reply_text("❌ Database connection error", parse_mode=ParseMode.MARKDOWN)
-            return
+        # Get or create user
+        storage.get_user(user_id, username)
         
-        cursor = connection.cursor(dictionary=True)
-        
-        # Disable safe updates
-        cursor.execute("SET SQL_SAFE_UPDATES = 0")
-        
-        try:
-            # Create user if doesn't exist
-            cursor.execute("""
-                INSERT IGNORE INTO users (user_id, username) 
-                VALUES (%s, %s)
-            """, (user_id, username))
-            connection.commit()
+        if subcommand == "balance":
+            await show_balance(update)
+        elif subcommand == "daily":
+            await claim_daily(update)
+        elif subcommand == "send" and len(message_parts) >= 4:
+            try:
+                recipient = message_parts[2].replace("@", "")
+                amount = int(message_parts[3])
+                await send_coins(update, recipient, amount)
+            except ValueError:
+                await update.message.reply_text("❌ Invalid amount specified", parse_mode=ParseMode.MARKDOWN)
+        elif subcommand == "history":
+            await show_history(update)
+        else:
+            usage_msg = (
+                "*🟡 Coin System Commands*\n\n"
+                "`coins` - Show your balance\n"
+                "`coins daily` - Claim daily reward (5 coins)\n"
+                "`coins send @user amount` - Send coins to user\n"
+                "`coins history` - Show your transaction history"
+            )
+            await update.message.reply_text(usage_msg, parse_mode=ParseMode.MARKDOWN)
             
-            if subcommand == "balance":
-                await show_balance(update, cursor)
-            elif subcommand == "daily":
-                await claim_daily(update, cursor, connection)
-            elif subcommand == "send" and len(message_parts) >= 4:
-                try:
-                    recipient = message_parts[2].replace("@", "")
-                    amount = int(message_parts[3])
-                    await send_coins(update, cursor, connection, recipient, amount)
-                except ValueError:
-                    await update.message.reply_text("❌ Invalid amount specified", parse_mode=ParseMode.MARKDOWN)
-            elif subcommand == "history":
-                await show_history(update, cursor)
-            else:
-                usage_msg = (
-                    "*🟡 Coin System Commands*\n\n"
-                    "`coins` - Show your balance\n"
-                    "`coins daily` - Claim daily reward (5 coins)\n"
-                    "`coins send @user amount` - Send coins to user\n"
-                    "`coins history` - Show your transaction history"
-                )
-                await update.message.reply_text(usage_msg, parse_mode=ParseMode.MARKDOWN)
-        
-        finally:
-            # Re-enable safe updates
-            cursor.execute("SET SQL_SAFE_UPDATES = 1")
-            cursor.close()
-            connection.close()
-        
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}", parse_mode=ParseMode.MARKDOWN)
 
-async def show_balance(update, cursor):
+async def show_balance(update):
     """Show user's coin balance"""
     try:
-        user_id = update.effective_user.id
-        cursor.execute("SELECT coins FROM users WHERE user_id = %s", (user_id,))
-        result = cursor.fetchone()
+        user_id = str(update.effective_user.id)
+        user = storage.get_user(user_id)
         
-        if result:
-            balance_msg = (
-                "*🏦 Your Coin Balance*\n\n"
-                f"Balance: `{result['coins']} coins`"
-            )
-            await update.message.reply_text(balance_msg, parse_mode=ParseMode.MARKDOWN)
-        else:
-            await update.message.reply_text("❌ Error fetching balance", parse_mode=ParseMode.MARKDOWN)
+        balance_msg = (
+            "*🏦 Your Coin Balance*\n\n"
+            f"Balance: `{user['coins']} coins`"
+        )
+        await update.message.reply_text(balance_msg, parse_mode=ParseMode.MARKDOWN)
     except Exception as e:
         await update.message.reply_text(f"❌ Error showing balance: {str(e)}", parse_mode=ParseMode.MARKDOWN)
 
-async def claim_daily(update, cursor, connection):
+async def claim_daily(update):
     """Claim daily reward"""
     try:
-        user_id = update.effective_user.id
-        daily_amount = 5  # Daily reward amount set to 5 coins
+        user_id = str(update.effective_user.id)
+        user = storage.get_user(user_id)
+        daily_amount = 5  # Daily reward amount
         
-        cursor.execute("SELECT last_daily FROM users WHERE user_id = %s", (user_id,))
-        result = cursor.fetchone()
-        
-        if result['last_daily'] is not None:
-            last_claim = result['last_daily']
+        if user['last_daily']:
+            last_claim = user['last_daily']
             next_claim = last_claim + timedelta(days=1)
             
             if datetime.now() < next_claim:
@@ -107,100 +78,75 @@ async def claim_daily(update, cursor, connection):
                 return
         
         # Update user's coins and last_daily
-        cursor.execute("""
-            UPDATE users 
-            SET coins = coins + %s, last_daily = CURRENT_TIMESTAMP
-            WHERE user_id = %s
-        """, (daily_amount, user_id))
+        storage.update_user_coins(user_id, daily_amount)
+        storage.update_last_daily(user_id)
         
         # Record transaction
-        cursor.execute("""
-            INSERT INTO transactions (user_id, amount, type, description)
-            VALUES (%s, %s, 'daily', 'Daily reward claimed')
-        """, (user_id, daily_amount))
-        
-        connection.commit()
+        storage.add_transaction(user_id, daily_amount, 'daily', 'Daily reward claimed')
         
         await update.message.reply_text(
             f"✅ You claimed your daily reward of `{daily_amount} coins`!",
             parse_mode=ParseMode.MARKDOWN
         )
     except Exception as e:
-        connection.rollback()
         await update.message.reply_text(f"❌ Error claiming daily reward: {str(e)}", parse_mode=ParseMode.MARKDOWN)
 
-async def send_coins(update, cursor, connection, recipient_username, amount):
+async def send_coins(update, recipient_username, amount):
     """Send coins to another user"""
     try:
-        sender_id = update.effective_user.id
+        sender_id = str(update.effective_user.id)
+        sender = storage.get_user(sender_id)
         
         if amount <= 0:
             await update.message.reply_text("❌ Amount must be positive", parse_mode=ParseMode.MARKDOWN)
             return
         
-        # Check sender's balance
-        cursor.execute("SELECT coins FROM users WHERE user_id = %s", (sender_id,))
-        sender = cursor.fetchone()
-        
-        if not sender or sender['coins'] < amount:
+        if sender['coins'] < amount:
             await update.message.reply_text("❌ Insufficient coins", parse_mode=ParseMode.MARKDOWN)
             return
         
-        # Find recipient
-        cursor.execute("SELECT user_id, username FROM users WHERE username = %s", (recipient_username,))
-        recipient = cursor.fetchone()
+        # Find recipient by username
+        recipient_id = None
+        for uid, udata in storage.users.items():
+            if udata['username'].lower() == recipient_username.lower():
+                recipient_id = uid
+                break
         
-        if not recipient:
+        if not recipient_id:
             await update.message.reply_text("❌ Recipient not found", parse_mode=ParseMode.MARKDOWN)
             return
         
-        try:
-            # Transfer coins
-            cursor.execute(
-                "UPDATE users SET coins = coins - %s WHERE user_id = %s", 
-                (amount, sender_id)
-            )
-            cursor.execute(
-                "UPDATE users SET coins = coins + %s WHERE user_id = %s", 
-                (amount, recipient['user_id'])
-            )
-            
-            # Record transactions
-            cursor.execute("""
-                INSERT INTO transactions (user_id, amount, type, description)
-                VALUES (%s, %s, 'send', %s),
-                       (%s, %s, 'receive', %s)
-            """, (
-                sender_id, -amount, f"Sent coins to @{recipient_username}",
-                recipient['user_id'], amount, f"Received coins from @{update.effective_user.username}"
-            ))
-            
-            connection.commit()
-            
-            await update.message.reply_text(
-                f"✅ Successfully sent `{amount} coins` to @{recipient_username}",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            
-        except Exception as e:
-            connection.rollback()
-            await update.message.reply_text(f"❌ Error during transfer: {str(e)}", parse_mode=ParseMode.MARKDOWN)
+        # Transfer coins
+        storage.update_user_coins(sender_id, -amount)
+        storage.update_user_coins(recipient_id, amount)
+        
+        # Record transactions
+        storage.add_transaction(
+            sender_id, 
+            -amount, 
+            'send', 
+            f"Sent coins to @{recipient_username}"
+        )
+        storage.add_transaction(
+            recipient_id, 
+            amount, 
+            'receive', 
+            f"Received coins from @{update.effective_user.username}"
+        )
+        
+        await update.message.reply_text(
+            f"✅ Successfully sent `{amount} coins` to @{recipient_username}",
+            parse_mode=ParseMode.MARKDOWN
+        )
             
     except Exception as e:
         await update.message.reply_text(f"❌ Error sending coins: {str(e)}", parse_mode=ParseMode.MARKDOWN)
 
-async def show_history(update, cursor):
+async def show_history(update):
     """Show user's transaction history"""
     try:
-        user_id = update.effective_user.id
-        cursor.execute("""
-            SELECT amount, type, description, created_at 
-            FROM transactions 
-            WHERE user_id = %s 
-            ORDER BY created_at DESC 
-            LIMIT 5
-        """, (user_id,))
-        transactions = cursor.fetchall()
+        user_id = str(update.effective_user.id)
+        transactions = storage.get_transactions(user_id)
         
         if transactions:
             history_msg = "*📜 Recent Transactions*\n\n"

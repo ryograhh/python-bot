@@ -7,46 +7,29 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 import aiohttp
 import io
-from db.database import get_database_connection
+from storage.storage import storage
 
 DECRYPT_COST = 2  # Cost in coins for each decryption attempt
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for the nm command - decrypts encrypted content from text or .nm files"""
     try:
-        # Check if user has enough coins first
-        connection = get_database_connection()
-        if not connection:
-            await update.message.reply_text("❌ Database connection error", parse_mode=ParseMode.MARKDOWN)
-            return
-            
-        cursor = connection.cursor(dictionary=True)
-        user_id = update.effective_user.id
+        user_id = str(update.effective_user.id)
+        username = update.effective_user.username or "Unknown"
         
-        # Check user's balance
-        cursor.execute("SELECT coins FROM users WHERE user_id = %s", (user_id,))
-        user = cursor.fetchone()
+        # Get or create user
+        user = storage.get_user(user_id, username)
         
-        if not user:
-            await update.message.reply_text("❌ Please use the coins command first to create your account", parse_mode=ParseMode.MARKDOWN)
-            cursor.close()
-            connection.close()
-            return
-            
         if user['coins'] < DECRYPT_COST:
             await update.message.reply_text(
                 f"❌ Insufficient coins. Decryption costs `{DECRYPT_COST}` coins. Your balance: `{user['coins']}` coins",
                 parse_mode=ParseMode.MARKDOWN
             )
-            cursor.close()
-            connection.close()
             return
 
         # Deduct coins first
-        cursor.execute("""
-            UPDATE users SET coins = coins - %s WHERE user_id = %s
-        """, (DECRYPT_COST, user_id))
-        connection.commit()
+        storage.update_user_coins(user_id, -DECRYPT_COST)
+        storage.add_transaction(user_id, -DECRYPT_COST, 'decrypt', 'Decryption service fee')
 
         try:
             if update.message.document and update.message.document.file_name.endswith('.nm'):
@@ -60,10 +43,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             await process_decryption(update, encrypted_content, user_id)
                         else:
                             # Return coins on failure
-                            cursor.execute("""
-                                UPDATE users SET coins = coins + %s WHERE user_id = %s
-                            """, (DECRYPT_COST, user_id))
-                            connection.commit()
+                            storage.update_user_coins(user_id, DECRYPT_COST)
+                            storage.add_transaction(user_id, DECRYPT_COST, 'refund', 'Decryption failed - coins returned')
                             await update.message.reply_text(
                                 "```\n❌ Error: Could not download file. Coins have been returned.\n```",
                                 parse_mode=ParseMode.MARKDOWN
@@ -74,10 +55,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_parts = update.message.text.split(" ", 1)
                 if len(message_parts) < 2:
                     # Return coins if no content provided
-                    cursor.execute("""
-                        UPDATE users SET coins = coins + %s WHERE user_id = %s
-                    """, (DECRYPT_COST, user_id))
-                    connection.commit()
+                    storage.update_user_coins(user_id, DECRYPT_COST)
+                    storage.add_transaction(user_id, DECRYPT_COST, 'refund', 'Decryption cancelled - coins returned')
                     usage_msg = (
                         "*NM Decryption Tool*\n\n"
                         f"Cost: `{DECRYPT_COST}` coins per decryption\n\n"
@@ -93,16 +72,10 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         except Exception as e:
             # Return coins on any error
-            cursor.execute("""
-                UPDATE users SET coins = coins + %s WHERE user_id = %s
-            """, (DECRYPT_COST, user_id))
-            connection.commit()
+            storage.update_user_coins(user_id, DECRYPT_COST)
+            storage.add_transaction(user_id, DECRYPT_COST, 'refund', 'Error occurred - coins returned')
             error_msg = f"```\n❌ Error: {str(e)}\nCoins have been returned.\n```"
             await update.message.reply_text(error_msg, parse_mode=ParseMode.MARKDOWN)
-        
-        finally:
-            cursor.close()
-            connection.close()
 
     except Exception as e:
         await update.message.reply_text(f"```\n❌ Error: {str(e)}\n```", parse_mode=ParseMode.MARKDOWN)
@@ -157,15 +130,8 @@ async def process_decryption(update, encrypted_content, user_id):
 
         else:
             # Return coins if decryption yielded no content
-            connection = get_database_connection()
-            if connection:
-                cursor = connection.cursor()
-                cursor.execute("""
-                    UPDATE users SET coins = coins + %s WHERE user_id = %s
-                """, (DECRYPT_COST, user_id))
-                connection.commit()
-                cursor.close()
-                connection.close()
+            storage.update_user_coins(user_id, DECRYPT_COST)
+            storage.add_transaction(user_id, DECRYPT_COST, 'refund', 'Decryption yielded no content - coins returned')
             
             await update.message.reply_text(
                 "```\n❌ Decryption yielded no content. Coins have been returned.\n```",
@@ -174,15 +140,8 @@ async def process_decryption(update, encrypted_content, user_id):
 
     except Exception as e:
         # Return coins on error
-        connection = get_database_connection()
-        if connection:
-            cursor = connection.cursor()
-            cursor.execute("""
-                UPDATE users SET coins = coins + %s WHERE user_id = %s
-            """, (DECRYPT_COST, user_id))
-            connection.commit()
-            cursor.close()
-            connection.close()
+        storage.update_user_coins(user_id, DECRYPT_COST)
+        storage.add_transaction(user_id, DECRYPT_COST, 'refund', 'Decryption error - coins returned')
             
         error_msg = f"```\n❌ Decryption Error: {str(e)}\nCoins have been returned.\n```"
         await update.message.reply_text(error_msg, parse_mode=ParseMode.MARKDOWN)

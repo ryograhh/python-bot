@@ -1,7 +1,6 @@
 from flask import Flask
 from threading import Thread
 from api import setup_bot
-from db.database import initialize_database
 
 app = Flask(__name__)
 
@@ -17,7 +16,6 @@ def run_flask():
     app.run(host='0.0.0.0', port=3306)
 
 def run_bot():
-    initialize_database()
     setup_bot()
 
 def main():
