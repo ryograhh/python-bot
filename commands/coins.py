@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from datetime import datetime, timedelta
-from storage.storage import storage
+from db.mongodb import db
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for coins command - manages user coins"""
@@ -14,7 +14,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = update.effective_user.username or "Unknown"
         
         # Get or create user
-        storage.get_user(user_id, username)
+        db.get_user(user_id, username)
         
         if subcommand == "balance":
             await show_balance(update)
@@ -46,7 +46,7 @@ async def show_balance(update):
     """Show user's coin balance"""
     try:
         user_id = str(update.effective_user.id)
-        user = storage.get_user(user_id)
+        user = db.get_user(user_id)
         
         balance_msg = (
             "*🏦 Your Coin Balance*\n\n"
@@ -60,7 +60,7 @@ async def claim_daily(update):
     """Claim daily reward"""
     try:
         user_id = str(update.effective_user.id)
-        user = storage.get_user(user_id)
+        user = db.get_user(user_id)
         daily_amount = 5  # Daily reward amount
         
         if user['last_daily']:
@@ -78,11 +78,11 @@ async def claim_daily(update):
                 return
         
         # Update user's coins and last_daily
-        storage.update_user_coins(user_id, daily_amount)
-        storage.update_last_daily(user_id)
+        db.update_user_coins(user_id, daily_amount)
+        db.update_last_daily(user_id)
         
         # Record transaction
-        storage.add_transaction(user_id, daily_amount, 'daily', 'Daily reward claimed')
+        db.add_transaction(user_id, daily_amount, 'daily', 'Daily reward claimed')
         
         await update.message.reply_text(
             f"✅ You claimed your daily reward of `{daily_amount} coins`!",
@@ -95,7 +95,7 @@ async def send_coins(update, recipient_username, amount):
     """Send coins to another user"""
     try:
         sender_id = str(update.effective_user.id)
-        sender = storage.get_user(sender_id)
+        sender = db.get_user(sender_id)
         
         if amount <= 0:
             await update.message.reply_text("❌ Amount must be positive", parse_mode=ParseMode.MARKDOWN)
@@ -106,28 +106,25 @@ async def send_coins(update, recipient_username, amount):
             return
         
         # Find recipient by username
-        recipient_id = None
-        for uid, udata in storage.users.items():
-            if udata['username'].lower() == recipient_username.lower():
-                recipient_id = uid
-                break
-        
-        if not recipient_id:
+        recipient = db.find_user_by_username(recipient_username)
+        if not recipient:
             await update.message.reply_text("❌ Recipient not found", parse_mode=ParseMode.MARKDOWN)
             return
         
+        recipient_id = recipient['user_id']
+        
         # Transfer coins
-        storage.update_user_coins(sender_id, -amount)
-        storage.update_user_coins(recipient_id, amount)
+        db.update_user_coins(sender_id, -amount)
+        db.update_user_coins(recipient_id, amount)
         
         # Record transactions
-        storage.add_transaction(
+        db.add_transaction(
             sender_id, 
             -amount, 
             'send', 
             f"Sent coins to @{recipient_username}"
         )
-        storage.add_transaction(
+        db.add_transaction(
             recipient_id, 
             amount, 
             'receive', 
@@ -146,7 +143,7 @@ async def show_history(update):
     """Show user's transaction history"""
     try:
         user_id = str(update.effective_user.id)
-        transactions = storage.get_transactions(user_id)
+        transactions = db.get_transactions(user_id)
         
         if transactions:
             history_msg = "*📜 Recent Transactions*\n\n"
