@@ -8,6 +8,8 @@ import os
 import tempfile
 from db.mongodb import db
 
+description = "Decrypt Netmod content (costs 3-4 coins)"
+
 # Cost settings
 TEXT_COST = 3  # Cost for text-based decryption
 FILE_COST = 4  # Cost for file-based decryption

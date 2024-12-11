@@ -5,6 +5,8 @@ from datetime import datetime
 from db.mongodb import db
 import random
 
+description = "Gambling game with colors (win up to 5x your bet)"
+
 # Game settings
 MIN_BET = 1
 MAX_BET = 1000

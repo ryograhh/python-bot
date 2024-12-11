@@ -4,6 +4,8 @@ from telegram.ext import ContextTypes
 from datetime import datetime, timedelta
 from db.mongodb import db
 
+description = "Manage your coins, claim daily rewards, and send coins to others"
+
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for coins command - manages user coins"""
     try:
