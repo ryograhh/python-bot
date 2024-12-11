@@ -10,9 +10,8 @@ from db.mongodb import db
 
 description = "Decrypt Netmod content (costs 3-4 coins)"
 
-# Cost settings
-TEXT_COST = 3  # Cost for text-based decryption
-FILE_COST = 4  # Cost for file-based decryption
+TEXT_COST = 3 
+FILE_COST = 4  
 
 def decrypt_aes_ecb_128(ciphertext, key):
     """Decrypt AES-ECB-128 encrypted content"""
@@ -69,9 +68,7 @@ def handle_nm(encrypted_content, key):
     return message
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for the nm command"""
     try:
-        # Get user information
         user_id = str(update.effective_user.id)
         username = update.effective_user.username or "Unknown"
         user = db.get_user(user_id, username)
@@ -89,19 +86,15 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if is_file:
-            # Get file from Telegram
             file = await context.bot.get_file(update.message.document.file_id)
             
-            # Download the file
             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
                 await file.download_to_memory(temp_file)
                 temp_file_path = temp_file.name
 
-            # Read the file content
             with open(temp_file_path, 'r', encoding='utf-8') as f:
                 encrypted_content = f.read().strip()
             
-            # Clean up the temporary file
             os.unlink(temp_file_path)
             
         else:
