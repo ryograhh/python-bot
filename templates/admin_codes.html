@@ -1,160 +1,171 @@
-<div class="min-h-screen" x-data="{
-    codes: [],
-    isLoading: true,
-    showCreateModal: false,
-    newCode: {
-        coins: 0,
-        description: ''
-    },
-    formError: '',
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Codes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="min-h-screen" x-data="{
+        codes: [],
+        isLoading: true,
+        showCreateModal: false,
+        newCode: {
+            coins: 0,
+            description: ''
+        },
+        formError: '',
 
-    async init() {
-        try {
-            const response = await fetch('/api/admin/codes', {
-                headers: {
-                    'Authorization': 'Bearer your_admin_token_here'
-                }
-            });
-            if (!response.ok) throw new Error('Failed to fetch codes');
-            this.codes = await response.json();
-        } catch (error) {
-            console.error('Error:', error);
-        } finally {
-            this.isLoading = false;
+        async init() {
+            try {
+                const response = await fetch('/api/admin/codes', {
+                    headers: {
+                        'Authorization': 'Bearer your_admin_token_here'
+                    }
+                });
+                if (!response.ok) throw new Error('Failed to fetch codes');
+                this.codes = await response.json();
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                this.isLoading = false;
+            }
+        },
+
+        async createCode() {
+            if (!this.newCode.coins || this.newCode.coins <= 0) {
+                this.formError = 'Please enter a valid coin amount';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/admin/codes/create', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer your_admin_token_here'
+                    },
+                    body: JSON.stringify(this.newCode)
+                });
+
+                if (!response.ok) throw new Error('Failed to create code');
+                
+                const newCode = await response.json();
+                this.codes.unshift(newCode);
+                this.showCreateModal = false;
+                this.newCode = { coins: 0, description: '' };
+                this.formError = '';
+            } catch (error) {
+                console.error('Error:', error);
+                this.formError = 'Failed to create code';
+            }
         }
-    },
+    }">
+        <div class="bg-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-6">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-3xl font-bold text-gray-900">Admin Codes</h1>
+                    <div class="flex items-center space-x-4">
+                        <button @click="showCreateModal = true" class="text-blue-600 hover:text-blue-800 flex items-center">
+                            Create Code
+                        </button>
+                        <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
+                            Back to Dashboard
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-    async createCode() {
-        if (!this.newCode.coins || this.newCode.coins <= 0) {
-            this.formError = 'Please enter a valid coin amount';
-            return;
-        }
+        <div class="max-w-7xl mx-auto px-4 py-8" role="main">
+            <div class="text-center py-12" x-show="isLoading">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                <p>Loading codes...</p>
+            </div>
 
-        try {
-            const response = await fetch('/api/admin/codes/create', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer your_admin_token_here'
-                },
-                body: JSON.stringify(this.newCode)
-            });
+            <div class="bg-white rounded-lg shadow" x-show="!isLoading">
+                <div class="p-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Code</p>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Coins</p>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Description</p>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Used By</p>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Created</p>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <p class="font-medium text-gray-900">Status</p>
+                        </div>
+                    </div>
+                </div>
 
-            if (!response.ok) throw new Error('Failed to create code');
-            
-            const newCode = await response.json();
-            this.codes.unshift(newCode);
-            this.showCreateModal = false;
-            this.newCode = { coins: 0, description: '' };
-            this.formError = '';
-        } catch (error) {
-            console.error('Error:', error);
-            this.formError = 'Failed to create code';
-        }
-    }
-}">
-    <div class="bg-white shadow">
-        <div class="max-w-7xl mx-auto px-4 py-6">
-            <div class="flex justify-between items-center">
-                <h1 id="admin-codes" class="text-3xl font-bold text-gray-900">Admin Codes</h1>
-                <div class="flex items-center space-x-4">
-                    <button @click="showCreateModal = true" class="text-blue-600 hover:text-blue-800 flex items-center">
-                        Create Code
-                    </button>
-                    <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
-                        Back to Dashboard
-                    </a>
+                <template x-for="code in codes">
+                    <div class="border-t border-gray-200 px-6 py-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-center">
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div class="flex items-center">
+                                <span class="font-mono font-bold text-blue-600" x-text="code.code"></span>
+                            </div>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div>
+                                <span class="text-sm font-medium text-gray-900" x-text="code.coins"></span>
+                                <span class="text-sm text-gray-500"> coins</span>
+                            </div>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div>
+                                <span class="text-sm text-gray-900" x-text="code.description || '-'"></span>
+                            </div>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div>
+                                <span class="text-sm text-gray-900" x-text="code.used_by.length || 0"></span>
+                            </div>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div>
+                                <span class="text-sm text-gray-900" x-text="new Date(code.created_at).toLocaleString()"></span>
+                            </div>
+                        </div>
+                        <div class="col-span-1 sm:col-span-2 md:col-span-1">
+                            <div>
+                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="code.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="code.is_active ? 'Active' : 'Inactive'"></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" x-show="showCreateModal" @click.self="showCreateModal = false">
+            <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+                <h2 class="text-xl font-bold mb-4">Create Admin Code</h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block font-medium text-gray-700">Coins Amount</label>
+                        <input type="number" min="0" x-model="newCode.coins" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                    <div>
+                        <label class="block font-medium text-gray-700">Description (Optional)</label>
+                        <textarea x-model="newCode.description" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"></textarea>
+                    </div>
+                    <div class="text-red-600 text-sm" x-show="formError" x-text="formError"></div>
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button @click="showCreateModal = false" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
+                        <button @click="createCode()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Code</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <div class="max-w-7xl mx-auto px-4 py-8" role="main">
-        <div class="text-center py-12" x-show="isLoading">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-            <p>Loading codes...</p>
-        </div>
-
-        <div class="bg-white rounded-lg shadow" x-show="!isLoading">
-            <div class="p-6">
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Code</p>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Coins</p>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Description</p>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Used By</p>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Created</p>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <p class="font-medium text-gray-900">Status</p>
-                    </div>
-                </div>
-            </div>
-
-            <template x-for="code in codes">
-                <div class="border-t border-gray-200 px-6 py-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-center">
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div class="flex items-center">
-                            <span class="font-mono font-bold text-blue-600" x-text="code.code"></span>
-                        </div>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div>
-                            <span class="text-sm font-medium text-gray-900" x-text="code.coins"></span>
-                            <span class="text-sm text-gray-500"> coins</span>
-                        </div>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div>
-                            <span class="text-sm text-gray-900" x-text="code.description || '-'"></span>
-                        </div>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div>
-                            <span class="text-sm text-gray-900" x-text="code.used_by.length || 0"></span>
-                        </div>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div>
-                            <span class="text-sm text-gray-900" x-text="new Date(code.created_at).toLocaleString()"></span>
-                        </div>
-                    </div>
-                    <div class="col-span-1 sm:col-span-2 md:col-span-1">
-                        <div>
-                            <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" :class="code.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'" x-text="code.is_active ? 'Active' : 'Inactive'"></span>
-                        </div>
-                    </div>
-                </div>
-            </template>
-        </div>
-    </div>
-
-    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" x-show="showCreateModal" @click.self="showCreateModal = false">
-        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
-            <h2 id="create-admin-code" class="text-xl font-bold mb-4">Create Admin Code</h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="block font-medium text-gray-700">Coins Amount</label>
-                    <input type="number" min="0" x-model="newCode.coins" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md" />
-                </div>
-                <div>
-                    <label class="block font-medium text-gray-700">Description (Optional)</label>
-                    <textarea x-model="newCode.description" class="mt-1 focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"></textarea>
-                </div>
-                <div class="text-red-600 text-sm" x-show="formError" x-text="formError"></div>
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button @click="showCreateModal = false" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Cancel</button>
-                    <button @click="createCode()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Create Code</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
+</body>
+</html>
