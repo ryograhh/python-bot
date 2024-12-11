@@ -1,9 +1,9 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import ContextTypes, CallbackQueryHandler
-from storage.storage import storage
-import random
+from telegram.ext import ContextTypes
 from datetime import datetime, timedelta
+from db.mongodb import db
+import random
 
 # Game settings
 MIN_BET = 1
@@ -34,8 +34,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
         username = update.effective_user.username or "Unknown"
         
-        # Get or create user
-        user = storage.get_user(user_id, username)
+        # Get or create user from MongoDB
+        user = db.get_user(user_id, username)
         
         if len(message_parts) == 1:
             # Show game info and instructions
@@ -50,7 +50,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "*How to play:*\n"
                 "Use command: `color <amount> <color>`\n"
                 "Example: `color 10 red`\n\n"
-                f"Cooldown: {COOLDOWN_SECONDS} seconds between games"
+                f"Cooldown: {COOLDOWN_SECONDS} seconds between games\n\n"
+                f"Your Balance: `{user['coins']}` coins"
             )
             await update.message.reply_text(info_msg, parse_mode=ParseMode.MARKDOWN)
             return
@@ -107,9 +108,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Update cooldown
         user_cooldowns[user_id] = datetime.now()
 
-        # Deduct bet amount
-        storage.update_user_coins(user_id, -bet_amount)
-        storage.add_transaction(user_id, -bet_amount, 'game', f'Color game bet on {color}')
+        # Deduct bet amount using MongoDB
+        db.update_user_coins(user_id, -bet_amount)
+        db.add_transaction(user_id, -bet_amount, 'game', f'Color game bet on {color}')
 
         # Generate result based on probabilities
         result = random.choices(
@@ -124,8 +125,8 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Calculate winnings if won
         if won:
             winnings = bet_amount * MULTIPLIERS[color]
-            storage.update_user_coins(user_id, winnings)
-            storage.add_transaction(user_id, winnings, 'game', f'Color game win on {color}')
+            db.update_user_coins(user_id, winnings)
+            db.add_transaction(user_id, winnings, 'game', f'Color game win on {color}')
             net_profit = winnings - bet_amount
         else:
             net_profit = -bet_amount
@@ -134,6 +135,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         color_emojis = {'red': '🔴', 'green': '💚', 'blue': '🔵'}
         result_emoji = color_emojis[result]
         chosen_emoji = color_emojis[color]
+
+        # Get updated user data
+        updated_user = db.get_user(user_id)
 
         # Create result message
         if won:
@@ -156,8 +160,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         # Show updated balance
-        user = storage.get_user(user_id)
-        result_msg += f"\n\nCurrent Balance: `{user['coins']}` coins"
+        result_msg += f"\n\nCurrent Balance: `{updated_user['coins']}` coins"
 
         await update.message.reply_text(result_msg, parse_mode=ParseMode.MARKDOWN)
 
