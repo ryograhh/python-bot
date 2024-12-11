@@ -1,14 +1,13 @@
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
-from datetime import datetime, timedelta
+from datetime import datetime
 from db.mongodb import db
 import random
 
 # Game settings
 MIN_BET = 1
-MAX_BET = 100
-COOLDOWN_SECONDS = 30
+MAX_BET = 1000
 
 # Color multipliers
 MULTIPLIERS = {
@@ -23,9 +22,6 @@ PROBABILITIES = {
     'green': 35,  # 35% chance
     'blue': 15    # 15% chance
 }
-
-# Store user cooldowns
-user_cooldowns = {}
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for the color game command"""
@@ -50,7 +46,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "*How to play:*\n"
                 "Use command: `color <amount> <color>`\n"
                 "Example: `color 10 red`\n\n"
-                f"Cooldown: {COOLDOWN_SECONDS} seconds between games\n\n"
                 f"Your Balance: `{user['coins']}` coins"
             )
             await update.message.reply_text(info_msg, parse_mode=ParseMode.MARKDOWN)
@@ -62,17 +57,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
             return
-
-        # Check cooldown
-        if user_id in user_cooldowns:
-            time_diff = datetime.now() - user_cooldowns[user_id]
-            if time_diff.total_seconds() < COOLDOWN_SECONDS:
-                remaining = int(COOLDOWN_SECONDS - time_diff.total_seconds())
-                await update.message.reply_text(
-                    f"❌ Please wait `{remaining}` seconds before playing again",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
 
         try:
             bet_amount = int(message_parts[1])
@@ -104,9 +88,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.MARKDOWN
             )
             return
-
-        # Update cooldown
-        user_cooldowns[user_id] = datetime.now()
 
         # Deduct bet amount using MongoDB
         db.update_user_coins(user_id, -bet_amount)
