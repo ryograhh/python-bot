@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from threading import Thread
 from api import setup_bot
-from mongodb import db
+from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
 import json
@@ -15,7 +15,7 @@ import random
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.INFO,  # Changed from DEBUG to INFO
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -30,7 +30,27 @@ CORS(app)
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
-ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', 'Jubiar101')
+ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', 'Jubiar101')  # Add this to your .env file
+
+def get_db():
+    """Get MongoDB client and database"""
+    try:
+        client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            retryWrites=True,
+            tls=True,
+            tlsAllowInvalidCertificates=True
+        )
+        db = client[DB_NAME]
+        # Test connection
+        client.admin.command('ping')
+        return client, db
+    except Exception as e:
+        logger.error(f"Database connection error: {str(e)}")
+        raise
 
 def serialize_datetime(obj):
     """Helper function to serialize datetime objects"""
@@ -82,8 +102,12 @@ def admin_codes():
 def get_users():
     """API endpoint to get all users"""
     try:
+        client, db = get_db()
         users = list(db.users.find({}, {'_id': 0}))
-        return jsonify(format_json(users))
+        client.close()
+        
+        formatted_users = format_json(users)
+        return jsonify(formatted_users)
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
         return jsonify({'error': 'Failed to fetch users'}), 500
@@ -92,11 +116,15 @@ def get_users():
 def get_transactions():
     """API endpoint to get transactions"""
     try:
+        client, db = get_db()
         transactions = list(db.transactions.find(
             {}, 
             {'_id': 0}
         ).sort('created_at', -1).limit(100))
-        return jsonify(format_json(transactions))
+        client.close()
+        
+        formatted_transactions = format_json(transactions)
+        return jsonify(formatted_transactions)
     except Exception as e:
         logger.error(f"Error getting transactions: {str(e)}")
         return jsonify({'error': 'Failed to fetch transactions'}), 500
@@ -111,8 +139,12 @@ def get_admin_codes():
         if token != f"Bearer {ADMIN_TOKEN}":
             return jsonify({'error': 'Unauthorized'}), 401
 
+        client, db = get_db()
         codes = list(db.admin_codes.find({}, {'_id': 0}).sort('created_at', -1))
-        return jsonify(format_json(codes))
+        client.close()
+        
+        formatted_codes = format_json(codes)
+        return jsonify(formatted_codes)
     except Exception as e:
         logger.error(f"Error getting admin codes: {str(e)}")
         return jsonify({'error': 'Failed to fetch admin codes'}), 500
@@ -130,10 +162,19 @@ def create_admin_code():
         if not data or 'coins' not in data:
             return jsonify({'error': 'Invalid request data'}), 400
 
-        created_code = db.create_admin_code(
-            coins=int(data['coins']),
-            description=data.get('description', '')
-        )
+        client, db = get_db()
+        new_code = db.admin_codes.insert_one({
+            'code': ''.join(random.choices('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789', k=8)),
+            'coins': int(data['coins']),
+            'description': data.get('description', ''),
+            'created_at': datetime.now(),
+            'used_by': [],
+            'is_active': True
+        })
+        
+        created_code = db.admin_codes.find_one({'_id': new_code.inserted_id}, {'_id': 0})
+        client.close()
+        
         return jsonify(format_json(created_code))
     except Exception as e:
         logger.error(f"Error creating admin code: {str(e)}")
@@ -147,8 +188,53 @@ def redeem_code(code):
         if not user_id:
             return jsonify({'error': 'User ID is required'}), 400
 
-        result = db.use_admin_code(code, user_id)
-        return jsonify(result)
+        client, db = get_db()
+        
+        # Find the code
+        admin_code = db.admin_codes.find_one({
+            'code': code.upper(),
+            'is_active': True
+        })
+
+        if not admin_code:
+            return jsonify({'error': 'Invalid or expired code'}), 404
+
+        # Check if user has already used this code
+        if user_id in admin_code['used_by']:
+            return jsonify({'error': 'Code already used'}), 400
+
+        # Update user's coins
+        result = db.users.find_one_and_update(
+            {'user_id': user_id},
+            {'$inc': {'coins': admin_code['coins']}},
+            return_document=True
+        )
+
+        if not result:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Mark code as used
+        db.admin_codes.update_one(
+            {'_id': admin_code['_id']},
+            {'$push': {'used_by': user_id}}
+        )
+
+        # Add transaction record
+        db.transactions.insert_one({
+            'user_id': user_id,
+            'amount': admin_code['coins'],
+            'type': 'admin_code',
+            'description': f"Redeemed code: {code}",
+            'created_at': datetime.now()
+        })
+
+        client.close()
+        
+        return jsonify({
+            'success': True,
+            'coins_added': admin_code['coins'],
+            'total_coins': result['coins']
+        })
     except Exception as e:
         logger.error(f"Error redeeming code: {str(e)}")
         return jsonify({'error': 'Failed to redeem code'}), 500
@@ -157,7 +243,9 @@ def redeem_code(code):
 def health():
     """Health check endpoint"""
     try:
-        db.client.admin.command('ping')
+        client, _ = get_db()
+        client.admin.command('ping')
+        client.close()
         return jsonify({
             "status": "healthy",
             "database": "connected",
@@ -179,7 +267,7 @@ def run_flask():
             host='0.0.0.0',
             port=3306,
             use_reloader=False,
-            debug=False
+            debug=False  # Changed from True to False
         )
     except Exception as e:
         logger.error(f"Flask server error: {str(e)}")
@@ -198,21 +286,22 @@ def main():
         # Verify environment variables
         if not MONGO_URI:
             raise ValueError("MONGO_URI environment variable is not set")
-
+        
         # Initialize MongoDB
-        db.client.admin.command('ping')
-        logger.info("🚀 MongoDB connection successful")
-
+        client, _ = get_db()
+        client.admin.command('ping')
+        client.close()
+        
         logger.info("🚀 Starting server...")
-
+        
         # Start Flask in a separate thread
         flask_thread = Thread(target=run_flask)
         flask_thread.daemon = True
         flask_thread.start()
-
+        
         # Run the bot in the main thread
         run_bot()
-
+        
     except KeyboardInterrupt:
         logger.info("Server shutdown requested...")
         sys.exit(0)
