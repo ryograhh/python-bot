@@ -15,6 +15,7 @@
         users: [],
         isLoading: true,
         timeframe: 'week',
+        chartType: 'line',
         chart: null,
 
         async init() {
@@ -40,38 +41,82 @@
 
         initChart() {
             const ctx = document.getElementById('coinChart').getContext('2d');
-            
-            // Process data for chart
             const processedData = this.processTransactionData();
             
             this.chart = new Chart(ctx, {
-                type: 'line',
+                type: this.chartType,
                 data: {
                     labels: processedData.labels,
-                    datasets: [{
-                        label: 'Total Coins',
-                        data: processedData.data,
-                        borderColor: 'rgb(59, 130, 246)',
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                        fill: true,
-                        tension: 0.4
-                    }]
+                    datasets: [
+                        {
+                            label: 'Total Coins',
+                            data: processedData.data,
+                            borderColor: 'rgb(59, 130, 246)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Daily Transactions',
+                            data: processedData.dailyTx,
+                            borderColor: 'rgb(16, 185, 129)',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                            hidden: true
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
                     plugins: {
                         legend: {
                             position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 20
+                            }
                         },
                         title: {
                             display: true,
-                            text: 'Coin Distribution Over Time'
+                            text: 'Coin Distribution Over Time',
+                            font: {
+                                size: 16,
+                                weight: 'bold'
+                            },
+                            padding: 20
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.dataset.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += context.parsed.y.toLocaleString();
+                                    return label;
+                                }
+                            }
                         }
                     },
                     scales: {
                         y: {
-                            beginAtZero: true
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
                         }
                     }
                 }
@@ -79,33 +124,62 @@
         },
 
         processTransactionData() {
-            // Sort transactions by date
-            const sortedTransactions = [...this.transactions].sort((a, b) => 
-                new Date(a.created_at) - new Date(b.created_at)
-            );
+            const endDate = new Date();
+            let startDate = new Date();
+            
+            switch(this.timeframe) {
+                case 'week':
+                    startDate.setDate(startDate.getDate() - 7);
+                    break;
+                case 'month':
+                    startDate.setMonth(startDate.getMonth() - 1);
+                    break;
+                case 'year':
+                    startDate.setFullYear(startDate.getFullYear() - 1);
+                    break;
+            }
 
-            // Group by date and calculate cumulative total
+            const sortedTransactions = this.transactions
+                .filter(tx => new Date(tx.created_at) >= startDate)
+                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+
             const dailyData = {};
+            const dailyTx = {};
             let runningTotal = 0;
 
             sortedTransactions.forEach(tx => {
                 const date = new Date(tx.created_at).toISOString().split('T')[0];
                 runningTotal += tx.amount;
                 dailyData[date] = runningTotal;
+                dailyTx[date] = (dailyTx[date] || 0) + 1;
             });
 
             return {
                 labels: Object.keys(dailyData),
-                data: Object.values(dailyData)
+                data: Object.values(dailyData),
+                dailyTx: Object.values(dailyTx)
             };
         },
 
         updateTimeframe(newTimeframe) {
             this.timeframe = newTimeframe;
-            // Update chart data based on new timeframe
+            this.updateChart();
+        },
+
+        updateChartType(newType) {
+            this.chartType = newType;
+            if (this.chart) {
+                this.chart.destroy();
+            }
+            this.initChart();
+        },
+
+        updateChart() {
+            if (!this.chart) return;
             const processedData = this.processTransactionData();
             this.chart.data.labels = processedData.labels;
             this.chart.data.datasets[0].data = processedData.data;
+            this.chart.data.datasets[1].data = processedData.dailyTx;
             this.chart.update();
         }
     }">
@@ -114,8 +188,9 @@
             <div class="max-w-7xl mx-auto px-4 py-6">
                 <div class="flex justify-between items-center">
                     <h1 class="text-3xl font-bold text-gray-900">Coin Analytics</h1>
-                    <a href="/" class="text-blue-600 hover:text-blue-800">
-                        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                    <a href="/" class="text-blue-600 hover:text-blue-800 flex items-center">
+                        <i class="fas fa-arrow-left mr-2"></i>
+                        Back to Dashboard
                     </a>
                 </div>
             </div>
@@ -130,24 +205,44 @@
             </div>
 
             <div x-show="!isLoading">
-                <!-- Time Range Selector -->
+                <!-- Controls -->
                 <div class="mb-6 bg-white rounded-lg shadow p-4">
-                    <div class="flex space-x-4">
-                        <button 
-                            @click="updateTimeframe('week')" 
-                            :class="{'bg-blue-100 text-blue-800': timeframe === 'week'}"
-                            class="px-4 py-2 rounded-md hover:bg-gray-100"
-                        >Week</button>
-                        <button 
-                            @click="updateTimeframe('month')" 
-                            :class="{'bg-blue-100 text-blue-800': timeframe === 'month'}"
-                            class="px-4 py-2 rounded-md hover:bg-gray-100"
-                        >Month</button>
-                        <button 
-                            @click="updateTimeframe('year')" 
-                            :class="{'bg-blue-100 text-blue-800': timeframe === 'year'}"
-                            class="px-4 py-2 rounded-md hover:bg-gray-100"
-                        >Year</button>
+                    <div class="flex flex-wrap gap-4">
+                        <div class="flex space-x-2">
+                            <button 
+                                @click="updateTimeframe('week')" 
+                                :class="{'bg-blue-100 text-blue-800': timeframe === 'week'}"
+                                class="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                            >Week</button>
+                            <button 
+                                @click="updateTimeframe('month')" 
+                                :class="{'bg-blue-100 text-blue-800': timeframe === 'month'}"
+                                class="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                            >Month</button>
+                            <button 
+                                @click="updateTimeframe('year')" 
+                                :class="{'bg-blue-100 text-blue-800': timeframe === 'year'}"
+                                class="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                            >Year</button>
+                        </div>
+                        <div class="border-l pl-4 flex space-x-2">
+                            <button 
+                                @click="updateChartType('line')" 
+                                :class="{'bg-blue-100 text-blue-800': chartType === 'line'}"
+                                class="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                                title="Line Chart"
+                            >
+                                <i class="fas fa-chart-line"></i>
+                            </button>
+                            <button 
+                                @click="updateChartType('bar')" 
+                                :class="{'bg-blue-100 text-blue-800': chartType === 'bar'}"
+                                class="px-4 py-2 rounded-md hover:bg-gray-100 transition-colors"
+                                title="Bar Chart"
+                            >
+                                <i class="fas fa-chart-bar"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -167,7 +262,7 @@
                             </div>
                             <div class="ml-4">
                                 <p class="text-gray-500 text-sm">Total Coins</p>
-                                <p class="text-2xl font-bold" x-text="users.reduce((sum, user) => sum + (user.coins || 0), 0)"></p>
+                                <p class="text-2xl font-bold" x-text="users.reduce((sum, user) => sum + (user.coins || 0), 0).toLocaleString()"></p>
                             </div>
                         </div>
                     </div>
@@ -179,7 +274,9 @@
                             </div>
                             <div class="ml-4">
                                 <p class="text-gray-500 text-sm">Daily Average</p>
-                                <p class="text-2xl font-bold" x-text="Math.round(transactions.reduce((sum, tx) => sum + tx.amount, 0) / transactions.length)"></p>
+                                <p class="text-2xl font-bold" 
+                                   x-text="(transactions.reduce((sum, tx) => sum + tx.amount, 0) / transactions.length || 0).toFixed(1)">
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -191,7 +288,7 @@
                             </div>
                             <div class="ml-4">
                                 <p class="text-gray-500 text-sm">Total Transactions</p>
-                                <p class="text-2xl font-bold" x-text="transactions.length"></p>
+                                <p class="text-2xl font-bold" x-text="transactions.length.toLocaleString()"></p>
                             </div>
                         </div>
                     </div>
