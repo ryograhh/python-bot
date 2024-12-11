@@ -4,16 +4,16 @@ from api import setup_bot
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
-from bson import json_util
 import json
+from bson import json_util
 import os
 import sys
 import logging
 from datetime import datetime
 
-# Set up logging
+# Set up logging with more verbose output
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -21,67 +21,64 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-app = Flask(__name__)
+# Configure Flask with template folder
+app = Flask(__name__, template_folder='templates')
 
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
-MONGO_TIMEOUT = int(os.getenv('MONGO_CONNECTION_TIMEOUT', '30000'))
+
+def parse_json(data):
+    """Custom JSON parser for MongoDB data"""
+    return json.loads(json_util.dumps(data))
 
 def get_db():
     """Get MongoDB client and database"""
-    client = MongoClient(
-        MONGO_URI,
-        serverSelectionTimeoutMS=30000,
-        connectTimeoutMS=30000,
-        socketTimeoutMS=30000,
-        retryWrites=True,
-        tls=True,
-        tlsAllowInvalidCertificates=True
-    )
-    return client, client[DB_NAME]
-
-def format_datetime(obj):
-    """Format datetime objects for JSON serialization"""
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    return obj
-
-def init_mongodb():
-    """Initialize MongoDB connection and create indexes"""
     try:
-        client, db = get_db()
-        
-        # Test connection
-        client.admin.command('ping')
-        
-        # Create collections if they don't exist
-        existing_collections = db.list_collection_names()
-        if 'users' not in existing_collections:
-            logger.info("Creating users collection...")
-            db.create_collection('users')
-        if 'transactions' not in existing_collections:
-            logger.info("Creating transactions collection...")
-            db.create_collection('transactions')
-            
-        # Create indexes with background=True
-        logger.info("Creating indexes...")
-        db.users.create_index('user_id', unique=True, background=True)
-        db.users.create_index('username', background=True)
-        db.transactions.create_index([('user_id', 1), ('created_at', -1)], background=True)
-        
-        logger.info("✅ MongoDB connection and setup successful")
-        client.close()
-        return True
-        
+        client = MongoClient(
+            MONGO_URI,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
+            socketTimeoutMS=5000,
+            retryWrites=True,
+            tls=True,
+            tlsAllowInvalidCertificates=True
+        )
+        db = client[DB_NAME]
+        return client, db
     except Exception as e:
-        logger.error(f"❌ Error during MongoDB initialization: {str(e)}")
-        return False
+        logger.error(f"Database connection error: {str(e)}")
+        raise
 
 @app.route('/')
 def home():
     """Render the dashboard template"""
-    return render_template('index.html')
+    try:
+        client, db = get_db()
+        
+        # Get all users and transactions with basic fields
+        users = list(db.users.find({}, {'_id': 0}))
+        transactions = list(db.transactions.find({}, {'_id': 0}).limit(100))  # Limit to last 100 transactions
+        
+        # Convert MongoDB data to JSON-serializable format
+        users_json = parse_json(users)
+        transactions_json = parse_json(transactions)
+        
+        client.close()
+        
+        return render_template(
+            'index.html',
+            users=users_json,
+            transactions=transactions_json
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in home route: {str(e)}")
+        # Return a user-friendly error page
+        return render_template(
+            'error.html',
+            error="Unable to load dashboard. Please try again later."
+        ), 500
 
 @app.route('/api/users')
 def get_users():
@@ -89,53 +86,32 @@ def get_users():
     try:
         client, db = get_db()
         users = list(db.users.find({}, {'_id': 0}))
-        
-        # Format datetime fields
-        for user in users:
-            if 'last_daily' in user and user['last_daily']:
-                user['last_daily'] = format_datetime(user['last_daily'])
-            if 'created_at' in user and user['created_at']:
-                user['created_at'] = format_datetime(user['created_at'])
-        
         client.close()
-        return jsonify(users)
+        return jsonify(parse_json(users))
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to fetch users'}), 500
 
 @app.route('/api/transactions')
 def get_transactions():
-    """API endpoint to get all transactions"""
+    """API endpoint to get transactions"""
     try:
         client, db = get_db()
-        transactions = list(db.transactions.find({}, {'_id': 0}))
-        
-        # Format datetime fields
-        for transaction in transactions:
-            if 'created_at' in transaction:
-                transaction['created_at'] = format_datetime(transaction['created_at'])
-        
+        transactions = list(db.transactions.find({}, {'_id': 0}).limit(100))
         client.close()
-        return jsonify(transactions)
+        return jsonify(parse_json(transactions))
     except Exception as e:
         logger.error(f"Error getting transactions: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Failed to fetch transactions'}), 500
 
 @app.route('/health')
 def health():
     """Health check endpoint"""
     try:
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000
-        )
+        client, _ = get_db()
         client.admin.command('ping')
         client.close()
-        return jsonify({
-            "status": "healthy",
-            "database": "connected"
-        }), 200
+        return jsonify({"status": "healthy", "database": "connected"}), 200
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({
@@ -150,10 +126,11 @@ def run_flask():
         app.run(
             host='0.0.0.0',
             port=3306,
-            use_reloader=False
+            use_reloader=False,
+            debug=True  # Enable debug mode for better error reporting
         )
     except Exception as e:
-        logger.error(f"❌ Flask server error: {str(e)}")
+        logger.error(f"Flask server error: {str(e)}")
         sys.exit(1)
 
 def run_bot():
@@ -161,33 +138,35 @@ def run_bot():
     try:
         setup_bot()
     except Exception as e:
-        logger.error(f"❌ Telegram bot error: {str(e)}")
+        logger.error(f"Telegram bot error: {str(e)}")
         sys.exit(1)
 
 def main():
     try:
+        # Verify environment variables
         if not MONGO_URI:
-            logger.error("❌ MONGO_URI environment variable is not set")
-            sys.exit(1)
+            raise ValueError("MONGO_URI environment variable is not set")
         
-        logger.info("Initializing MongoDB...")
-        if not init_mongodb():
-            logger.error("❌ Failed to initialize MongoDB")
-            sys.exit(1)
+        # Verify database connection
+        client, _ = get_db()
+        client.admin.command('ping')
+        client.close()
         
         logger.info("🚀 Starting server...")
         
+        # Start Flask in a separate thread
         flask_thread = Thread(target=run_flask)
         flask_thread.daemon = True
         flask_thread.start()
         
+        # Run the bot in the main thread
         run_bot()
         
     except KeyboardInterrupt:
         logger.info("Server shutdown requested...")
         sys.exit(0)
     except Exception as e:
-        logger.error(f"❌ Unexpected error: {str(e)}")
+        logger.error(f"Startup error: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
