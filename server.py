@@ -10,10 +10,11 @@ import os
 import sys
 import logging
 from datetime import datetime
+from flask_cors import CORS
 
-# Set up logging with more verbose output
+# Set up logging
 logging.basicConfig(
-    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -21,16 +22,13 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Configure Flask with template folder
-app = Flask(__name__, template_folder='templates')
+# Configure Flask
+app = Flask(__name__)
+CORS(app)  # Enable CORS
 
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
-
-def parse_json(data):
-    """Custom JSON parser for MongoDB data"""
-    return json.loads(json_util.dumps(data))
 
 def get_db():
     """Get MongoDB client and database"""
@@ -45,40 +43,38 @@ def get_db():
             tlsAllowInvalidCertificates=True
         )
         db = client[DB_NAME]
+        # Test connection
+        client.admin.command('ping')
         return client, db
     except Exception as e:
         logger.error(f"Database connection error: {str(e)}")
         raise
 
+def serialize_datetime(obj):
+    """Helper function to serialize datetime objects"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return obj
+
+def format_json(data):
+    """Format MongoDB data for JSON response"""
+    if isinstance(data, list):
+        return [
+            {k: serialize_datetime(v) for k, v in item.items()}
+            for item in data
+        ]
+    elif isinstance(data, dict):
+        return {k: serialize_datetime(v) for k, v in data.items()}
+    return data
+
 @app.route('/')
 def home():
     """Render the dashboard template"""
     try:
-        client, db = get_db()
-        
-        # Get all users and transactions with basic fields
-        users = list(db.users.find({}, {'_id': 0}))
-        transactions = list(db.transactions.find({}, {'_id': 0}).limit(100))  # Limit to last 100 transactions
-        
-        # Convert MongoDB data to JSON-serializable format
-        users_json = parse_json(users)
-        transactions_json = parse_json(transactions)
-        
-        client.close()
-        
-        return render_template(
-            'index.html',
-            users=users_json,
-            transactions=transactions_json
-        )
-        
+        return render_template('index.html')
     except Exception as e:
-        logger.error(f"Error in home route: {str(e)}")
-        # Return a user-friendly error page
-        return render_template(
-            'error.html',
-            error="Unable to load dashboard. Please try again later."
-        ), 500
+        logger.error(f"Error rendering template: {str(e)}")
+        return "Error loading dashboard", 500
 
 @app.route('/api/users')
 def get_users():
@@ -87,7 +83,9 @@ def get_users():
         client, db = get_db()
         users = list(db.users.find({}, {'_id': 0}))
         client.close()
-        return jsonify(parse_json(users))
+        
+        formatted_users = format_json(users)
+        return jsonify(formatted_users)
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
         return jsonify({'error': 'Failed to fetch users'}), 500
@@ -97,9 +95,14 @@ def get_transactions():
     """API endpoint to get transactions"""
     try:
         client, db = get_db()
-        transactions = list(db.transactions.find({}, {'_id': 0}).limit(100))
+        transactions = list(db.transactions.find(
+            {}, 
+            {'_id': 0}
+        ).sort('created_at', -1).limit(100))
         client.close()
-        return jsonify(parse_json(transactions))
+        
+        formatted_transactions = format_json(transactions)
+        return jsonify(formatted_transactions)
     except Exception as e:
         logger.error(f"Error getting transactions: {str(e)}")
         return jsonify({'error': 'Failed to fetch transactions'}), 500
@@ -111,14 +114,42 @@ def health():
         client, _ = get_db()
         client.admin.command('ping')
         client.close()
-        return jsonify({"status": "healthy", "database": "connected"}), 200
+        return jsonify({
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.now().isoformat()
+        }), 200
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
         return jsonify({
             "status": "unhealthy",
             "database": "disconnected",
-            "error": str(e)
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
         }), 500
+
+def init_mongodb():
+    """Initialize MongoDB connection and create indexes"""
+    try:
+        client, db = get_db()
+        
+        # Create collections if they don't exist
+        if 'users' not in db.list_collection_names():
+            db.create_collection('users')
+        if 'transactions' not in db.list_collection_names():
+            db.create_collection('transactions')
+        
+        # Create indexes
+        db.users.create_index('user_id', unique=True)
+        db.users.create_index('username')
+        db.transactions.create_index([('user_id', 1), ('created_at', -1)])
+        
+        client.close()
+        logger.info("✅ MongoDB initialization successful")
+        return True
+    except Exception as e:
+        logger.error(f"❌ MongoDB initialization failed: {str(e)}")
+        return False
 
 def run_flask():
     """Run Flask server with error handling"""
@@ -147,10 +178,10 @@ def main():
         if not MONGO_URI:
             raise ValueError("MONGO_URI environment variable is not set")
         
-        # Verify database connection
-        client, _ = get_db()
-        client.admin.command('ping')
-        client.close()
+        # Initialize MongoDB
+        logger.info("Initializing MongoDB...")
+        if not init_mongodb():
+            raise Exception("Failed to initialize MongoDB")
         
         logger.info("🚀 Starting server...")
         
