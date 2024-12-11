@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bot Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.10.2/cdn.min.js" defer></script>
+    <style>
+        [x-cloak] { display: none !important; }
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.3s; }
+        .fade-enter, .fade-leave-to { opacity: 0; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div x-data="{ 
+        activeTab: 'users',
+        users: {{ users|tojson }},
+        transactions: {{ transactions|tojson }},
+        searchTerm: '',
+        userSort: { field: 'coins', direction: 'desc' },
+        txSort: { field: 'created_at', direction: 'desc' },
+        
+        sortUsers(field) {
+            if (this.userSort.field === field) {
+                this.userSort.direction = this.userSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.userSort.field = field;
+                this.userSort.direction = 'desc';
+            }
+        },
+
+        sortTransactions(field) {
+            if (this.txSort.field === field) {
+                this.txSort.direction = this.txSort.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                this.txSort.field = field;
+                this.txSort.direction = 'desc';
+            }
+        },
+        
+        getSortIcon(field, sortObj) {
+            if (sortObj.field !== field) return 'fa-sort';
+            return sortObj.direction === 'asc' ? 'fa-sort-up' : 'fa-sort-down';
+        },
+        
+        filteredUsers() {
+            return this.users.filter(user => 
+                user.username.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                user.user_id.includes(this.searchTerm)
+            ).sort((a, b) => {
+                let aVal = a[this.userSort.field];
+                let bVal = b[this.userSort.field];
+                
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                
+                if (aVal === null) return 1;
+                if (bVal === null) return -1;
+                
+                return this.userSort.direction === 'asc' ? 
+                    (aVal > bVal ? 1 : -1) : 
+                    (aVal < bVal ? 1 : -1);
+            });
+        },
+        
+        filteredTransactions() {
+            return this.transactions.filter(tx =>
+                (tx.description.toLowerCase().includes(this.searchTerm.toLowerCase()) ||
+                tx.user_id.includes(this.searchTerm))
+            ).sort((a, b) => {
+                let aVal = a[this.txSort.field];
+                let bVal = b[this.txSort.field];
+                
+                if (typeof aVal === 'string') {
+                    aVal = aVal.toLowerCase();
+                    bVal = bVal.toLowerCase();
+                }
+                
+                return this.txSort.direction === 'asc' ? 
+                    (aVal > bVal ? 1 : -1) : 
+                    (aVal < bVal ? 1 : -1);
+            });
+        },
+
+        formatDate(dateStr) {
+            if (!dateStr) return 'Never';
+            const date = new Date(dateStr);
+            return date.toLocaleString();
+        }
+    }" 
+    class="container mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">Bot Dashboard</h1>
+            <p class="text-gray-600">Real-time monitoring and management</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Total Users Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-300">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-blue-500 bg-opacity-10">
+                        <i class="fas fa-users text-blue-500 text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h2 class="text-gray-600 text-sm font-medium">Total Users</h2>
+                        <p class="text-2xl font-semibold text-gray-800" x-text="users.length"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Coins Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-300">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-green-500 bg-opacity-10">
+                        <i class="fas fa-coins text-green-500 text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h2 class="text-gray-600 text-sm font-medium">Total Coins</h2>
+                        <p class="text-2xl font-semibold text-gray-800">
+                            <span x-text="users.reduce((sum, user) => sum + user.coins, 0)"></span>
+                            <span class="text-sm text-gray-500">coins</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Total Transactions Card -->
+            <div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-300">
+                <div class="flex items-center">
+                    <div class="p-3 rounded-full bg-purple-500 bg-opacity-10">
+                        <i class="fas fa-exchange-alt text-purple-500 text-2xl"></i>
+                    </div>
+                    <div class="ml-4">
+                        <h2 class="text-gray-600 text-sm font-medium">Total Transactions</h2>
+                        <p class="text-2xl font-semibold text-gray-800" x-text="transactions.length"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="mb-6 border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8" aria-label="Tabs">
+                <button @click="activeTab = 'users'" 
+                        :class="{'border-blue-500 text-blue-600': activeTab === 'users',
+                                'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'users'}"
+                        class="group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm">
+                    <i class="fas fa-users mr-2"></i>
+                    Users
+                </button>
+                <button @click="activeTab = 'transactions'"
+                        :class="{'border-blue-500 text-blue-600': activeTab === 'transactions',
+                                'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300': activeTab !== 'transactions'}"
+                        class="group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm">
+                    <i class="fas fa-exchange-alt mr-2"></i>
+                    Transactions
+                </button>
+            </nav>
+        </div>
+
+        <!-- Search Bar -->
+        <div class="mb-6">
+            <div class="relative">
+                <input type="text" x-model="searchTerm" 
+                       class="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 transition-colors duration-200"
+                       placeholder="Search by username, ID, or description...">
+                <div class="absolute left-3 top-2.5 text-gray-400">
+                    <i class="fas fa-search"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div x-show="activeTab === 'users'" 
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th @click="sortUsers('username')" 
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Username
+                                    <i class="fas ml-1" :class="getSortIcon('username', userSort)"></i>
+                                </div>
+                            </th>
+                            <th @click="sortUsers('coins')"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Coins
+                                    <i class="fas ml-1" :class="getSortIcon('coins', userSort)"></i>
+                                </div>
+                            </th>
+                            <th @click="sortUsers('last_daily')"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Last Daily
+                                    <i class="fas ml-1" :class="getSortIcon('last_daily', userSort)"></i>
+                                </div>
+                            </th>
+                            <th @click="sortUsers('created_at')"
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Joined
+                                    <i class="fas ml-1" :class="getSortIcon('created_at', userSort)"></i>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="user in filteredUsers()" :key="user.user_id">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="flex items-center">
+                                        <div class="flex-shrink-0 h-10 w-10">
+                                            <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                <i class="fas fa-user text-blue-500"></i>
+                                            </div>
+                                        </div>
+                                        <div class="ml-4">
+                                            <div class="text-sm font-medium text-gray-900" x-text="'@' + user.username"></div>
+                                            <div class="text-sm text-gray-500" x-text="user.user_id"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900">
+                                        <span x-text="user.coins"></span>
+                                        <span class="text-xs text-gray-500">coins</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900" x-text="formatDate(user.last_daily)"></div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(user.created_at)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Transactions Table -->
+        <div x-show="activeTab === 'transactions'"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             class="bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th @click="sortTransactions('type')" 
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Type
+                                    <i class="fas ml-1" :class="getSortIcon('type', txSort)"></i>
+                                </div>
+                            </th>
+                            <th @click="sortTransactions('user_id')" 
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    User
+                                    <i class="fas ml-1" :class="getSortIcon('user_id', txSort)"></i>
+                                </div>
+                            </th>
+                            <th @click="sortTransactions('amount')" 
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Amount
+                                    <i class="fas ml-1" :class="getSortIcon('amount', txSort)"></i>
+                                </div>
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Description
+                            </th>
+                            <th @click="sortTransactions('created_at')" 
+                                class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100">
+                                <div class="flex items-center">
+                                    Date
+                                    <i class="fas ml-1" :class="getSortIcon('created_at', txSort)"></i>
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <template x-for="tx in filteredTransactions()" :key="tx.created_at">
+                            <tr class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                                          :class="{
+                                              'bg-green-100 text-green-800': tx.type === 'daily',
+                                              'bg-blue-100 text-blue-800': tx.type === 'send',
+                                              'bg-yellow-100 text-yellow-800': tx.type === 'receive',
+                                              'bg-purple-100 text-purple-800': tx.type === 'service',
+                                              'bg-gray-100 text-gray-800': !['daily', 'send', 'receive', 'service'].includes(tx.type)
+                                          }"
+                                          x-text="tx.type">
+                                    </span>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium text-gray-900" 
+                                         x-text="users.find(u => u.user_id === tx.user_id)?.username || 'Unknown'">
+                                    </div>
+                                    <div class="text-xs text-gray-500" x-text="tx.user_id"></div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm font-medium" 
+                                         :class="{
+                                             'text-green-600': tx.amount > 0,
+                                             'text-red-600': tx.amount < 0
+                                         }">
+                                        <span x-text="tx.amount > 0 ? '+' + tx.amount : tx.amount"></span>
+                                        <span class="text-xs">coins</span>
+                                    </div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <div class="text-sm text-gray-900" x-text="tx.description"></div>
+                                </td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="formatDate(tx.created_at)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Empty State Messages -->
+        <div x-show="activeTab === 'users' && filteredUsers().length === 0" 
+             class="text-center py-8 bg-white rounded-lg shadow-md">
+            <i class="fas fa-search text-gray-400 text-4xl mb-4"></i>
+            <p class="text-gray-600">No users found matching your search.</p>
+        </div>
+
+        <div x-show="activeTab === 'transactions' && filteredTransactions().length === 0"
+             class="text-center py-8 bg-white rounded-lg shadow-md">
+            <i class="fas fa-search text-gray-400 text-4xl mb-4"></i>
+            <p class="text-gray-600">No transactions found matching your search.</p>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-gray-500 text-sm border-t border-gray-200 pt-8">
+            <p>© 2024 Bot Dashboard. All rights reserved.</p>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh data every 30 seconds
+        setInterval(() => {
+            fetch('/api/users')
+                .then(response => response.json())
+                .then(data => {
+                    Alpine.store('users', data);
+                });
+            
+            fetch('/api/transactions')
+                .then(response => response.json())
+                .then(data => {
+                    Alpine.store('transactions', data);
+                });
+        }, 30000);
+    </script>
+</body>
+</html>

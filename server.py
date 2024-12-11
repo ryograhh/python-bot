@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, render_template
 from threading import Thread
 from api import setup_bot
 from pymongo import MongoClient
@@ -25,25 +25,26 @@ MONGO_URI = os.getenv('MONGO_URI')
 DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
 MONGO_TIMEOUT = int(os.getenv('MONGO_CONNECTION_TIMEOUT', '30000'))
 
+def get_db():
+    """Get MongoDB client and database"""
+    client = MongoClient(
+        MONGO_URI,
+        serverSelectionTimeoutMS=30000,
+        connectTimeoutMS=30000,
+        socketTimeoutMS=30000,
+        retryWrites=True,
+        tls=True,
+        tlsAllowInvalidCertificates=True
+    )
+    return client, client[DB_NAME]
+
 def init_mongodb():
     """Initialize MongoDB connection and create indexes"""
     try:
-        # Create MongoDB client with proper settings
-        client = MongoClient(
-            MONGO_URI,
-            serverSelectionTimeoutMS=30000,
-            connectTimeoutMS=30000,
-            socketTimeoutMS=30000,
-            retryWrites=True,
-            tls=True,
-            tlsAllowInvalidCertificates=True
-        )
+        client, db = get_db()
         
         # Test connection
         client.admin.command('ping')
-        
-        # Get database
-        db = client[DB_NAME]
         
         # Create collections if they don't exist
         existing_collections = db.list_collection_names()
@@ -70,12 +71,35 @@ def init_mongodb():
 
 @app.route('/')
 def home():
-    return "Bot is running!"
+    try:
+        client, db = get_db()
+        
+        # Get all users and transactions
+        users = list(db.users.find({}, {'_id': 0}))
+        transactions = list(db.transactions.find({}, {'_id': 0}))
+        
+        # Convert datetime objects to strings for JSON serialization
+        for transaction in transactions:
+            if 'created_at' in transaction:
+                transaction['created_at'] = transaction['created_at'].isoformat()
+        
+        for user in users:
+            if 'last_daily' in user and user['last_daily']:
+                user['last_daily'] = user['last_daily'].isoformat()
+            if 'created_at' in user and user['created_at']:
+                user['created_at'] = user['created_at'].isoformat()
+        
+        client.close()
+        
+        return render_template('index.html', users=users, transactions=transactions)
+        
+    except Exception as e:
+        logger.error(f"Error in home route: {str(e)}")
+        return "Error loading dashboard", 500
 
 @app.route('/health')
 def health():
     try:
-        # Create a new client for health check
         client = MongoClient(
             MONGO_URI,
             serverSelectionTimeoutMS=5000,  # Short timeout for health check
