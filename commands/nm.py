@@ -6,6 +6,11 @@ import json
 from Crypto.Cipher import AES
 import os
 import tempfile
+from db.mongodb import db
+
+# Cost settings
+TEXT_COST = 3  # Cost for text-based decryption
+FILE_COST = 4  # Cost for file-based decryption
 
 def decrypt_aes_ecb_128(ciphertext, key):
     """Decrypt AES-ECB-128 encrypted content"""
@@ -64,8 +69,24 @@ def handle_nm(encrypted_content, key):
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for the nm command"""
     try:
+        # Get user information
+        user_id = str(update.effective_user.id)
+        username = update.effective_user.username or "Unknown"
+        user = db.get_user(user_id, username)
+
         # Check if there's a file attached
-        if update.message.document and update.message.document.file_name.endswith('.nm'):
+        is_file = update.message.document and update.message.document.file_name.endswith('.nm')
+        cost = FILE_COST if is_file else TEXT_COST
+
+        # Check if user has enough coins
+        if user['coins'] < cost:
+            await update.message.reply_text(
+                f"❌ Insufficient coins! You need `{cost}` coins for this operation.\nYour balance: `{user['coins']}` coins",
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+
+        if is_file:
             # Get file from Telegram
             file = await context.bot.get_file(update.message.document.file_id)
             
@@ -86,11 +107,26 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message_parts = update.message.text.split(maxsplit=1)
             if len(message_parts) < 2:
                 await update.message.reply_text(
-                    "❌ No encrypted content provided.\n\nUsage:\n`nm <encrypted_content>`\nor send a .nm file",
+                    "*🔐 Netmod Decryption Service*\n\n"
+                    "Usage:\n"
+                    "1. Text command: `nm <encrypted_content>`\n"
+                    "   Cost: `3 coins`\n\n"
+                    "2. File upload: Send `.nm` file\n"
+                    "   Cost: `4 coins`\n\n"
+                    f"Your balance: `{user['coins']}` coins",
                     parse_mode=ParseMode.MARKDOWN
                 )
                 return
             encrypted_content = message_parts[1]
+
+        # Deduct coins and record transaction
+        db.update_user_coins(user_id, -cost)
+        db.add_transaction(
+            user_id, 
+            -cost, 
+            'service', 
+            f'Netmod decryption ({("file" if is_file else "text")} mode)'
+        )
 
         # Decrypt the content
         key = base64.b64decode("X25ldHN5bmFfbmV0bW9kXw==")
@@ -100,14 +136,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Decryption yielded no content.")
             return
 
-        # Format the decrypted content
+        # Format the decrypted content with code blocks
         decrypted_content = "\n".join(decrypted_messages)
+        formatted_content = f"*🔓 Decrypted Content:*\n\n```\n{decrypted_content}\n```"
 
         # Send the decrypted content as a message
-        await update.message.reply_text(
-            f"*🔓 Decrypted Content:*\n\n{decrypted_content}",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        await update.message.reply_text(formatted_content, parse_mode=ParseMode.MARKDOWN)
 
         # Save and send as a file
         with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as temp_file:
@@ -126,10 +160,16 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Clean up
         os.unlink(temp_file_path)
 
-        # Send completion message with file size
+        # Get updated user balance
+        updated_user = db.get_user(user_id)
+
+        # Send completion message with file size and balance
         file_size_kb = len(decrypted_content.encode('utf-8')) / 1024
         await update.message.reply_text(
-            f"✅ Decryption complete!\nFile size: `{file_size_kb:.2f}` KB",
+            f"✅ Decryption complete!\n"
+            f"Cost: `-{cost}` coins\n"
+            f"File size: `{file_size_kb:.2f}` KB\n"
+            f"Current balance: `{updated_user['coins']}` coins",
             parse_mode=ParseMode.MARKDOWN
         )
 
