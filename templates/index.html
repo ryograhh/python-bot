@@ -62,14 +62,20 @@
             <div class="max-w-7xl mx-auto px-4 py-6">
                 <div class="flex justify-between items-center">
                     <h1 class="text-3xl font-bold text-gray-900">Bot Dashboard</h1>
-                    <div class="relative">
-                        <input 
-                            type="text"
-                            x-model="searchTerm"
-                            placeholder="Search..."
-                            class="w-64 px-4 py-2 pr-8 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                        <i class="fas fa-search absolute right-3 top-3 text-gray-400"></i>
+                    <div class="flex items-center space-x-4">
+                        <a href="/graph" class="text-blue-600 hover:text-blue-800 flex items-center">
+                            <i class="fas fa-chart-line mr-2"></i>
+                            View Analytics
+                        </a>
+                        <div class="relative">
+                            <input 
+                                type="text"
+                                x-model="searchTerm"
+                                placeholder="Search..."
+                                class="w-64 px-4 py-2 pr-8 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                            <i class="fas fa-search absolute right-3 top-3 text-gray-400"></i>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -84,7 +90,7 @@
             </div>
 
             <div x-show="!isLoading">
-                <!-- Stats -->
+                <!-- Stats Grid -->
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                     <!-- Users Card -->
                     <div class="bg-white rounded-lg shadow p-6">
@@ -98,7 +104,7 @@
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- Coins Card -->
                     <div class="bg-white rounded-lg shadow p-6">
                         <div class="flex items-center">
@@ -128,20 +134,22 @@
                     </div>
                 </div>
 
-                <!-- Tabs -->
+                <!-- Content Tabs -->
                 <div class="bg-white rounded-lg shadow mb-8">
                     <div class="border-b border-gray-200">
                         <nav class="flex space-x-4 px-4" aria-label="Tabs">
                             <button 
                                 @click="activeTab = 'users'"
                                 :class="{'border-b-2 border-blue-500': activeTab === 'users'}"
-                                class="px-3 py-4 text-sm font-medium hover:text-gray-700">
+                                class="px-3 py-4 text-sm font-medium hover:text-gray-700"
+                            >
                                 Users
                             </button>
                             <button 
                                 @click="activeTab = 'transactions'"
                                 :class="{'border-b-2 border-blue-500': activeTab === 'transactions'}"
-                                class="px-3 py-4 text-sm font-medium hover:text-gray-700">
+                                class="px-3 py-4 text-sm font-medium hover:text-gray-700"
+                            >
                                 Transactions
                             </button>
                         </nav>
@@ -164,11 +172,22 @@
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-6 py-4">
                                                 <div class="flex items-center">
-                                                    <span x-text="user.username"></span>
+                                                    <div class="flex-shrink-0 h-10 w-10">
+                                                        <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                            <span class="text-blue-600 font-medium" x-text="user.username[0].toUpperCase()"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="ml-4">
+                                                        <div class="text-sm font-medium text-gray-900" x-text="'@' + user.username"></div>
+                                                        <div class="text-sm text-gray-500" x-text="user.user_id"></div>
+                                                    </div>
                                                 </div>
                                             </td>
-                                            <td class="px-6 py-4" x-text="user.coins || 0"></td>
-                                            <td class="px-6 py-4" x-text="formatDate(user.last_daily)"></td>
+                                            <td class="px-6 py-4">
+                                                <span class="text-sm text-gray-900" x-text="user.coins || 0"></span>
+                                                <span class="text-sm text-gray-500"> coins</span>
+                                            </td>
+                                            <td class="px-6 py-4 text-sm text-gray-500" x-text="formatDate(user.last_daily)"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -181,13 +200,14 @@
                                 <thead>
                                     <tr>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
                                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200">
-                                    <template x-for="tx in filteredTransactions()" :key="tx.created_at">
+                                    <template x-for="tx in filteredTransactions()" :key="tx.user_id + tx.created_at">
                                         <tr class="hover:bg-gray-50">
                                             <td class="px-6 py-4">
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
@@ -200,21 +220,47 @@
                                                 </span>
                                             </td>
                                             <td class="px-6 py-4">
-                                                <span :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'"
-                                                    x-text="(tx.amount > 0 ? '+' : '') + tx.amount">
+                                                <div class="text-sm font-medium text-gray-900" x-text="users.find(u => u.user_id === tx.user_id)?.username || 'Unknown'"></div>
+                                                <div class="text-sm text-gray-500" x-text="tx.user_id"></div>
+                                            </td>
+                                            <td class="px-6 py-4">
+                                                <span class="text-sm" :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'"
+                                                    x-text="(tx.amount > 0 ? '+' : '') + tx.amount + ' coins'">
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4" x-text="tx.description"></td>
-                                            <td class="px-6 py-4" x-text="formatDate(tx.created_at)"></td>
+                                            <td class="px-6 py-4 text-sm text-gray-900" x-text="tx.description"></td>
+                                            <td class="px-6 py-4 text-sm text-gray-500" x-text="formatDate(tx.created_at)"></td>
                                         </tr>
                                     </template>
                                 </tbody>
                             </table>
                         </div>
+
+                        <!-- Empty States -->
+                        <div x-show="activeTab === 'users' && filteredUsers().length === 0" 
+                            class="text-center py-12">
+                            <i class="fas fa-users text-gray-400 text-4xl mb-4"></i>
+                            <p class="text-gray-500">No users found matching your search.</p>
+                        </div>
+
+                        <div x-show="activeTab === 'transactions' && filteredTransactions().length === 0" 
+                            class="text-center py-12">
+                            <i class="fas fa-exchange-alt text-gray-400 text-4xl mb-4"></i>
+                            <p class="text-gray-500">No transactions found matching your search.</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </main>
+
+        <!-- Footer -->
+        <footer class="bg-white mt-8 py-4">
+            <div class="max-w-7xl mx-auto px-4">
+                <p class="text-center text-sm text-gray-500">
+                    © 2024 Bot Dashboard. All rights reserved.
+                </p>
+            </div>
+        </footer>
     </div>
 </body>
 </html>

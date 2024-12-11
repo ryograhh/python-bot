@@ -106,6 +106,15 @@ def get_transactions():
     except Exception as e:
         logger.error(f"Error getting transactions: {str(e)}")
         return jsonify({'error': 'Failed to fetch transactions'}), 500
+    
+@app.route('/graph')
+def graph():
+    """Render the graph analytics page"""
+    try:
+        return render_template('graph.html')
+    except Exception as e:
+        logger.error(f"Error rendering graph template: {str(e)}")
+        return "Error loading graph page", 500
 
 @app.route('/health')
 def health():

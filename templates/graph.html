@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coin Analytics - Bot Dashboard</title>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen" x-data="{
+        transactions: [],
+        users: [],
+        isLoading: true,
+        timeframe: 'week',
+        chart: null,
+
+        async init() {
+            try {
+                const [txResponse, usersResponse] = await Promise.all([
+                    fetch('/api/transactions'),
+                    fetch('/api/users')
+                ]);
+
+                if (!txResponse.ok || !usersResponse.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+
+                this.transactions = await txResponse.json();
+                this.users = await usersResponse.json();
+                this.initChart();
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                this.isLoading = false;
+            }
+        },
+
+        initChart() {
+            const ctx = document.getElementById('coinChart').getContext('2d');
+            
+            // Process data for chart
+            const processedData = this.processTransactionData();
+            
+            this.chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: processedData.labels,
+                    datasets: [{
+                        label: 'Total Coins',
+                        data: processedData.data,
+                        borderColor: 'rgb(59, 130, 246)',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: true,
+                            text: 'Coin Distribution Over Time'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        },
+
+        processTransactionData() {
+            // Sort transactions by date
+            const sortedTransactions = [...this.transactions].sort((a, b) => 
+                new Date(a.created_at) - new Date(b.created_at)
+            );
+
+            // Group by date and calculate cumulative total
+            const dailyData = {};
+            let runningTotal = 0;
+
+            sortedTransactions.forEach(tx => {
+                const date = new Date(tx.created_at).toISOString().split('T')[0];
+                runningTotal += tx.amount;
+                dailyData[date] = runningTotal;
+            });
+
+            return {
+                labels: Object.keys(dailyData),
+                data: Object.values(dailyData)
+            };
+        },
+
+        updateTimeframe(newTimeframe) {
+            this.timeframe = newTimeframe;
+            // Update chart data based on new timeframe
+            const processedData = this.processTransactionData();
+            this.chart.data.labels = processedData.labels;
+            this.chart.data.datasets[0].data = processedData.data;
+            this.chart.update();
+        }
+    }">
+        <!-- Header -->
+        <header class="bg-white shadow">
+            <div class="max-w-7xl mx-auto px-4 py-6">
+                <div class="flex justify-between items-center">
+                    <h1 class="text-3xl font-bold text-gray-900">Coin Analytics</h1>
+                    <a href="/" class="text-blue-600 hover:text-blue-800">
+                        <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Loading State -->
+            <div x-show="isLoading" class="text-center py-12">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+                <p class="mt-4 text-gray-600">Loading data...</p>
+            </div>
+
+            <div x-show="!isLoading">
+                <!-- Time Range Selector -->
+                <div class="mb-6 bg-white rounded-lg shadow p-4">
+                    <div class="flex space-x-4">
+                        <button 
+                            @click="updateTimeframe('week')" 
+                            :class="{'bg-blue-100 text-blue-800': timeframe === 'week'}"
+                            class="px-4 py-2 rounded-md hover:bg-gray-100"
+                        >Week</button>
+                        <button 
+                            @click="updateTimeframe('month')" 
+                            :class="{'bg-blue-100 text-blue-800': timeframe === 'month'}"
+                            class="px-4 py-2 rounded-md hover:bg-gray-100"
+                        >Month</button>
+                        <button 
+                            @click="updateTimeframe('year')" 
+                            :class="{'bg-blue-100 text-blue-800': timeframe === 'year'}"
+                            class="px-4 py-2 rounded-md hover:bg-gray-100"
+                        >Year</button>
+                    </div>
+                </div>
+
+                <!-- Chart Container -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="h-[500px]">
+                        <canvas id="coinChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-blue-100">
+                                <i class="fas fa-coins text-blue-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Total Coins</p>
+                                <p class="text-2xl font-bold" x-text="users.reduce((sum, user) => sum + (user.coins || 0), 0)"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-green-100">
+                                <i class="fas fa-chart-line text-green-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Daily Average</p>
+                                <p class="text-2xl font-bold" x-text="Math.round(transactions.reduce((sum, tx) => sum + tx.amount, 0) / transactions.length)"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-6">
+                        <div class="flex items-center">
+                            <div class="p-3 rounded-full bg-purple-100">
+                                <i class="fas fa-exchange-alt text-purple-600 text-xl"></i>
+                            </div>
+                            <div class="ml-4">
+                                <p class="text-gray-500 text-sm">Total Transactions</p>
+                                <p class="text-2xl font-bold" x-text="transactions.length"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
