@@ -67,7 +67,7 @@ def aes_decrypt(data, key, iv):
     """Decrypt AES encrypted data"""
     aes_instance = AES.new(b64decode(key), AES.MODE_CBC, b64decode(iv))
     decrypted_data = aes_instance.decrypt(b64decode(data))
-    return decrypted_data.decode('utf-8').rstrip('\x10')
+    return decrypted_data.decode('utf-8', errors='ignore').rstrip('\x10')
 
 def md5crypt(data):
     """Generate MD5 hash of data"""
@@ -87,28 +87,48 @@ def decrypt_data(data, iv, version):
         try:
             aes_key = b64encode(md5crypt(key + " " + str(version)).encode()).decode()
             decrypted_data = aes_decrypt(data, aes_key, iv)
-            return clean_json_data(decrypted_data)
+            # Try to clean and parse JSON to verify decryption worked
+            clean_data = clean_json_data(decrypted_data)
+            json.loads(clean_data)  # Validate JSON
+            return clean_data
         except Exception:
             continue
-    raise Exception("No valid key found")
+    raise Exception("No valid key found for decryption")
 
 def format_output(data, indent=0):
     """Format decrypted data with proper indentation"""
     lines = []
     prefix = "  " * indent
     
-    for key, value in data.items():
-        if key == "message":
-            continue
-        if isinstance(value, dict):
-            lines.append(f"{prefix}*{key}:*")
-            lines.extend(format_output(value, indent + 1))
-        elif isinstance(value, list):
-            formatted_list = ", ".join(f"`{str(item)}`" for item in value)
-            lines.append(f"{prefix}*{key}:* [{formatted_list}]")
-        else:
-            lines.append(f"{prefix}*{key}:* `{value}`")
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if key == "message":
+                continue
+            if isinstance(value, dict):
+                lines.append(f"{prefix}*{key}:*")
+                lines.extend(format_output(value, indent + 1))
+            elif isinstance(value, list):
+                formatted_list = ", ".join(f"`{str(item)}`" for item in value)
+                lines.append(f"{prefix}*{key}:* [{formatted_list}]")
+            else:
+                lines.append(f"{prefix}*{key}:* `{value}`")
     return lines
+
+async def process_encrypted_content(encrypted_content):
+    """Process the encrypted content and return formatted result"""
+    content_json = json.loads(encrypted_content)
+    data = content_json['d']
+    version = content_json['v']
+    iv = data.split(".")[1]
+    encrypted_part = data.split(".")[0]
+
+    decrypted_data = decrypt_data(encrypted_part, iv, version)
+    json_data = json.loads(decrypted_data)
+
+    # Format output with markdown
+    formatted_lines = ["*🔓 Decrypted Content:*\n"]
+    formatted_lines.extend(format_output(json_data))
+    return "\n".join(formatted_lines)
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for the sks command"""
@@ -130,22 +150,24 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # Get content either from file or text
         if is_file:
-            # Get file from Telegram
-            file = await context.bot.get_file(update.message.document.file_id)
-            
-            # Download the file
-            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                await file.download_to_memory(temp_file)
-                temp_file_path = temp_file.name
-
-            # Read the file content
-            with open(temp_file_path, 'r', encoding='utf-8') as f:
-                encrypted_content = f.read().strip()
-            
-            # Clean up the temporary file
-            os.unlink(temp_file_path)
-            
+            try:
+                # Get file from Telegram
+                file = await context.bot.get_file(update.message.document.file_id)
+                
+                # Download the file to bytes
+                file_bytes = await file.download_as_bytearray()
+                
+                # Convert to string
+                encrypted_content = file_bytes.decode('utf-8', errors='ignore').strip()
+                
+            except Exception as e:
+                await update.message.reply_text(
+                    f"❌ Error reading file: `{str(e)}`",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
         else:
             # Get encrypted content from message text
             message_parts = update.message.text.split(maxsplit=1)
@@ -163,33 +185,25 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             encrypted_content = message_parts[1]
 
-        # Deduct coins and record transaction
-        db.update_user_coins(user_id, -cost)
-        db.add_transaction(
-            user_id, 
-            -cost, 
-            'service', 
-            f'SKS decryption ({("file" if is_file else "text")} mode)'
-        )
-
         # Process the decryption
         try:
-            content_json = json.loads(encrypted_content)
-            data = content_json['d']
-            version = content_json['v']
-            iv = data.split(".")[1]
-            encrypted_part = data.split(".")[0]
+            # Deduct coins and record transaction
+            db.update_user_coins(user_id, -cost)
+            db.add_transaction(
+                user_id, 
+                -cost, 
+                'service', 
+                f'SKS decryption ({("file" if is_file else "text")} mode)'
+            )
 
-            decrypted_data = decrypt_data(encrypted_part, iv, version)
-            json_data = json.loads(decrypted_data)
-
-            # Format output with markdown
-            formatted_lines = ["*🔓 Decrypted Content:*\n"]
-            formatted_lines.extend(format_output(json_data))
-            formatted_content = "\n".join(formatted_lines)
+            # Process the content
+            formatted_content = await process_encrypted_content(encrypted_content)
 
             # Send the formatted message
-            await update.message.reply_text(formatted_content, parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                formatted_content,
+                parse_mode=ParseMode.MARKDOWN
+            )
 
             # Save and send as a file
             with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as temp_file:
@@ -222,9 +236,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         except json.JSONDecodeError:
-            await update.message.reply_text("❌ Invalid JSON format", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                "❌ Invalid encrypted content format",
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except ValueError as ve:
+            await update.message.reply_text(
+                f"❌ Decryption error: `{str(ve)}`",
+                parse_mode=ParseMode.MARKDOWN
+            )
         except Exception as e:
-            await update.message.reply_text(f"❌ Decryption error: `{str(e)}`", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                f"❌ Error processing content: `{str(e)}`",
+                parse_mode=ParseMode.MARKDOWN
+            )
 
     except Exception as e:
         await update.message.reply_text(
