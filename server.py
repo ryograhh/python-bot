@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from threading import Thread
 from api import setup_bot
-from mongodb import MongoDB
+from mongodb import db
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
 import json
@@ -27,8 +27,10 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Initialize MongoDB
-db = MongoDB()
+# MongoDB Configuration
+MONGO_URI = os.getenv('MONGO_URI')
+DB_NAME = os.getenv('DB_NAME', 'telegram_bot')
+ADMIN_TOKEN = os.getenv('ADMIN_TOKEN', 'Jubiar101')
 
 def serialize_datetime(obj):
     """Helper function to serialize datetime objects"""
@@ -80,9 +82,8 @@ def admin_codes():
 def get_users():
     """API endpoint to get all users"""
     try:
-        users = db.get_all_users()
-        formatted_users = format_json(users)
-        return jsonify(formatted_users)
+        users = list(db.users.find({}, {'_id': 0}))
+        return jsonify(format_json(users))
     except Exception as e:
         logger.error(f"Error getting users: {str(e)}")
         return jsonify({'error': 'Failed to fetch users'}), 500
@@ -91,9 +92,11 @@ def get_users():
 def get_transactions():
     """API endpoint to get transactions"""
     try:
-        transactions = db.get_transactions(limit=100)
-        formatted_transactions = format_json(transactions)
-        return jsonify(formatted_transactions)
+        transactions = list(db.transactions.find(
+            {}, 
+            {'_id': 0}
+        ).sort('created_at', -1).limit(100))
+        return jsonify(format_json(transactions))
     except Exception as e:
         logger.error(f"Error getting transactions: {str(e)}")
         return jsonify({'error': 'Failed to fetch transactions'}), 500
@@ -105,12 +108,11 @@ def get_admin_codes():
     try:
         # Verify admin token
         token = request.headers.get('Authorization')
-        if token != f"Bearer {db.ADMIN_TOKEN}":
+        if token != f"Bearer {ADMIN_TOKEN}":
             return jsonify({'error': 'Unauthorized'}), 401
 
-        codes = db.get_admin_codes()
-        formatted_codes = format_json(codes)
-        return jsonify(formatted_codes)
+        codes = list(db.admin_codes.find({}, {'_id': 0}).sort('created_at', -1))
+        return jsonify(format_json(codes))
     except Exception as e:
         logger.error(f"Error getting admin codes: {str(e)}")
         return jsonify({'error': 'Failed to fetch admin codes'}), 500
@@ -121,7 +123,7 @@ def create_admin_code():
     try:
         # Verify admin token
         token = request.headers.get('Authorization')
-        if token != f"Bearer {db.ADMIN_TOKEN}":
+        if token != f"Bearer {ADMIN_TOKEN}":
             return jsonify({'error': 'Unauthorized'}), 401
 
         data = request.json
@@ -155,7 +157,7 @@ def redeem_code(code):
 def health():
     """Health check endpoint"""
     try:
-        db.ping()
+        db.client.admin.command('ping')
         return jsonify({
             "status": "healthy",
             "database": "connected",
@@ -194,19 +196,23 @@ def run_bot():
 def main():
     try:
         # Verify environment variables
-        if not db.MONGO_URI:
+        if not MONGO_URI:
             raise ValueError("MONGO_URI environment variable is not set")
-        
+
+        # Initialize MongoDB
+        db.client.admin.command('ping')
+        logger.info("🚀 MongoDB connection successful")
+
         logger.info("🚀 Starting server...")
-        
+
         # Start Flask in a separate thread
         flask_thread = Thread(target=run_flask)
         flask_thread.daemon = True
         flask_thread.start()
-        
+
         # Run the bot in the main thread
         run_bot()
-        
+
     except KeyboardInterrupt:
         logger.info("Server shutdown requested...")
         sys.exit(0)
