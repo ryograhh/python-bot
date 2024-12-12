@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from datetime import datetime, timedelta
-from db.mongodb import db
+from db.database import db
 
 description = "Manage your coins, claim daily rewards, and send coins to others"
 
@@ -16,7 +16,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = update.effective_user.username or "Unknown"
         
         # Get or create user
-        db.get_user(user_id, username)
+        db.users.get_user(user_id, username)
         
         if subcommand == "balance":
             await show_balance(update)
@@ -48,7 +48,7 @@ async def show_balance(update):
     """Show user's coin balance"""
     try:
         user_id = str(update.effective_user.id)
-        user = db.get_user(user_id)
+        user = db.users.get_user(user_id)
         
         balance_msg = (
             "*🏦 Your Coin Balance*\n\n"
@@ -62,7 +62,7 @@ async def claim_daily(update):
     """Claim daily reward"""
     try:
         user_id = str(update.effective_user.id)
-        user = db.get_user(user_id)
+        user = db.users.get_user(user_id)
         daily_amount = 5  # Daily reward amount
         
         if user['last_daily']:
@@ -80,16 +80,27 @@ async def claim_daily(update):
                 return
         
         # Update user's coins and last_daily
-        db.update_user_coins(user_id, daily_amount)
-        db.update_last_daily(user_id)
+        db.users.update_user_coins(user_id, daily_amount)
+        db.users.update_last_daily(user_id)
         
         # Record transaction
-        db.add_transaction(user_id, daily_amount, 'daily', 'Daily reward claimed')
-        
-        await update.message.reply_text(
-            f"✅ You claimed your daily reward of `{daily_amount} coins`!",
-            parse_mode=ParseMode.MARKDOWN
+        db.transactions.add_transaction(
+            user_id=user_id,
+            amount=daily_amount,
+            type_='daily',
+            description='Daily reward claimed'
         )
+        
+        # Get updated user data
+        updated_user = db.users.get_user(user_id)
+        
+        success_msg = (
+            "*✅ Daily Reward Claimed!*\n\n"
+            f"Reward: `+{daily_amount} coins`\n"
+            f"Current Balance: `{updated_user['coins']} coins`"
+        )
+        await update.message.reply_text(success_msg, parse_mode=ParseMode.MARKDOWN)
+        
     except Exception as e:
         await update.message.reply_text(f"❌ Error claiming daily reward: {str(e)}", parse_mode=ParseMode.MARKDOWN)
 
@@ -97,46 +108,65 @@ async def send_coins(update, recipient_username, amount):
     """Send coins to another user"""
     try:
         sender_id = str(update.effective_user.id)
-        sender = db.get_user(sender_id)
+        sender = db.users.get_user(sender_id)
         
         if amount <= 0:
             await update.message.reply_text("❌ Amount must be positive", parse_mode=ParseMode.MARKDOWN)
             return
         
         if sender['coins'] < amount:
-            await update.message.reply_text("❌ Insufficient coins", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                f"❌ Insufficient coins. Your balance: `{sender['coins']} coins`", 
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
         
         # Find recipient by username
-        recipient = db.find_user_by_username(recipient_username)
+        recipient = db.users.find_user_by_username(recipient_username)
         if not recipient:
-            await update.message.reply_text("❌ Recipient not found", parse_mode=ParseMode.MARKDOWN)
+            await update.message.reply_text(
+                "❌ Recipient not found. Make sure they have used the bot at least once.", 
+                parse_mode=ParseMode.MARKDOWN
+            )
+            return
+        
+        if recipient['user_id'] == sender_id:
+            await update.message.reply_text(
+                "❌ You cannot send coins to yourself", 
+                parse_mode=ParseMode.MARKDOWN
+            )
             return
         
         recipient_id = recipient['user_id']
         
         # Transfer coins
-        db.update_user_coins(sender_id, -amount)
-        db.update_user_coins(recipient_id, amount)
+        db.users.update_user_coins(sender_id, -amount)
+        db.users.update_user_coins(recipient_id, amount)
         
         # Record transactions
-        db.add_transaction(
-            sender_id, 
-            -amount, 
-            'send', 
-            f"Sent coins to @{recipient_username}"
-        )
-        db.add_transaction(
-            recipient_id, 
-            amount, 
-            'receive', 
-            f"Received coins from @{update.effective_user.username}"
+        db.transactions.add_transaction(
+            user_id=sender_id, 
+            amount=-amount, 
+            type_='send', 
+            description=f"Sent coins to @{recipient_username}"
         )
         
-        await update.message.reply_text(
-            f"✅ Successfully sent `{amount} coins` to @{recipient_username}",
-            parse_mode=ParseMode.MARKDOWN
+        db.transactions.add_transaction(
+            user_id=recipient_id, 
+            amount=amount, 
+            type_='receive', 
+            description=f"Received coins from @{update.effective_user.username}"
         )
+        
+        # Get updated sender data
+        updated_sender = db.users.get_user(sender_id)
+        
+        success_msg = (
+            "*💸 Coins Sent Successfully!*\n\n"
+            f"Sent: `{amount} coins` to @{recipient_username}\n"
+            f"Current Balance: `{updated_sender['coins']} coins`"
+        )
+        await update.message.reply_text(success_msg, parse_mode=ParseMode.MARKDOWN)
             
     except Exception as e:
         await update.message.reply_text(f"❌ Error sending coins: {str(e)}", parse_mode=ParseMode.MARKDOWN)
@@ -145,7 +175,7 @@ async def show_history(update):
     """Show user's transaction history"""
     try:
         user_id = str(update.effective_user.id)
-        transactions = db.get_transactions(user_id)
+        transactions = db.transactions.get_transactions(user_id)
         
         if transactions:
             history_msg = "*📜 Recent Transactions*\n\n"
@@ -156,6 +186,10 @@ async def show_history(update):
                 history_msg += f"{emoji} `{amount} coins` - {tx['description']} ({date})\n"
         else:
             history_msg = "*📜 Transaction History*\n\nNo transactions found."
+            
+        # Get current balance
+        user = db.users.get_user(user_id)
+        history_msg += f"\nCurrent Balance: `{user['coins']} coins`"
             
         await update.message.reply_text(history_msg, parse_mode=ParseMode.MARKDOWN)
         
