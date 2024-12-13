@@ -7,141 +7,21 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.10.2/cdn.min.js" defer></script>
-    <!-- Add safe-json-data div to store server-side data -->
     <script id="admin-codes-data" type="application/json">
         {{ admin_codes_json|safe }}
     </script>
-    <script>
-        document.addEventListener('alpine:init', () => {
-            Alpine.data('adminCodes', () => ({
-                codes: [],
-                showCreateModal: false,
-                showUsersModal: false,
-                selectedCode: null,
-                newCode: {
-                    coins: 0,
-                    description: '',
-                    max_uses: 1
-                },
-                searchTerm: '',
-                loading: true,
-                error: null,
-
-                init() {
-                    // Load data from the embedded JSON
-                    try {
-                        const dataScript = document.getElementById('admin-codes-data');
-                        if (dataScript) {
-                            this.codes = JSON.parse(dataScript.textContent || '[]');
-                        }
-                        this.loading = false;
-                    } catch (e) {
-                        console.error('Error parsing initial data:', e);
-                        this.error = 'Error loading initial data';
-                        this.loading = false;
-                    }
-                },
-
-                async createCode() {
-                    try {
-                        const response = await fetch('/api/admin/codes/create', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify(this.newCode)
-                        });
-                        const data = await response.json();
-                        if (response.ok) {
-                            this.codes.unshift(data);
-                            this.showCreateModal = false;
-                            this.newCode = { coins: 0, description: '', max_uses: 1 };
-                        } else {
-                            throw new Error(data.error || 'Failed to create code');
-                        }
-                    } catch (e) {
-                        this.error = e.message;
-                        setTimeout(() => this.error = null, 3000);
-                    }
-                },
-
-                async deleteCode(codeId) {
-                    if (!confirm('Are you sure you want to delete this code?')) return;
-                    
-                    try {
-                        const response = await fetch(`/api/admin/codes/${codeId}`, {
-                            method: 'DELETE'
-                        });
-                        if (response.ok) {
-                            this.codes = this.codes.filter(code => code.code !== codeId);
-                        } else {
-                            const data = await response.json();
-                            throw new Error(data.error || 'Failed to delete code');
-                        }
-                    } catch (e) {
-                        this.error = e.message;
-                        setTimeout(() => this.error = null, 3000);
-                    }
-                },
-
-                showUsers(code) {
-                    this.selectedCode = code;
-                    this.showUsersModal = true;
-                },
-
-                getStatusColor(code) {
-                    if (!code.is_active) {
-                        return code.status === 'fully_redeemed' ? 
-                            'bg-yellow-100 text-yellow-800' : 
-                            'bg-red-100 text-red-800';
-                    }
-                    return 'bg-green-100 text-green-800';
-                },
-
-                getStatusText(code) {
-                    if (!code.is_active) {
-                        return code.status === 'fully_redeemed' ? 
-                            'Fully Redeemed' : 
-                            'Expired';
-                    }
-                    const uses = code.used_by ? code.used_by.length : 0;
-                    const maxUses = code.max_uses || 1;
-                    return `Active (${uses}/${maxUses})`;
-                },
-
-                filteredCodes() {
-                    if (!this.searchTerm) return this.codes;
-                    const searchLower = this.searchTerm.toLowerCase();
-                    return this.codes.filter(code => {
-                        const codeMatch = code.code ? code.code.toLowerCase().includes(searchLower) : false;
-                        const descMatch = code.description ? code.description.toLowerCase().includes(searchLower) : false;
-                        return codeMatch || descMatch;
-                    });
-                },
-
-                formatDate(dateStr) {
-                    if (!dateStr) return '';
-                    return new Date(dateStr).toLocaleString();
-                },
-
-                getUserList(code) {
-                    if (!code.user_details || code.user_details.length === 0) return [];
-                    return code.user_details;
-                }
-            }))
-        })
-    </script>
+    <script src="{{ url_for('static', filename='js/admin_codes.js') }}"></script>
 </head>
 <body class="bg-gray-100 min-h-screen" x-data="adminCodes">
-    <div class="container mx-auto px-4 py-8">
+    <div class="container mx-auto px-4 py-4 sm:py-8">
         <!-- Header -->
-        <div class="flex justify-between items-center mb-8">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 sm:mb-8">
             <div>
-                <h1 class="text-4xl font-bold text-gray-800 mb-2">Admin Codes</h1>
-                <p class="text-gray-600">Manage and track admin code usage</p>
+                <h1 class="text-2xl sm:text-4xl font-bold text-gray-800 mb-2">Admin Codes</h1>
+                <p class="text-sm sm:text-base text-gray-600">Manage and track admin code usage</p>
             </div>
             <button @click="showCreateModal = true"
-                    class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-200">
+                    class="w-full sm:w-auto bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition duration-200">
                 <i class="fas fa-plus mr-2"></i> Create Code
             </button>
         </div>
@@ -150,7 +30,7 @@
         <div class="mb-6">
             <div class="relative">
                 <input type="text" x-model="searchTerm" 
-                       class="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                       class="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm sm:text-base"
                        placeholder="Search codes...">
                 <div class="absolute left-3 top-2.5 text-gray-400">
                     <i class="fas fa-search"></i>
@@ -160,75 +40,82 @@
 
         <!-- Loading State -->
         <div x-show="loading" class="text-center py-8">
-            <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
-            <p class="mt-2 text-gray-600">Loading codes...</p>
+            <i class="fas fa-spinner fa-spin text-3xl sm:text-4xl text-blue-500"></i>
+            <p class="mt-2 text-sm sm:text-base text-gray-600">Loading codes...</p>
         </div>
 
         <!-- Error State -->
         <div x-show="error" 
-             class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4"
+             class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 text-sm sm:text-base"
              @click="error = null">
             <p><i class="fas fa-exclamation-circle mr-2"></i> <span x-text="error"></span></p>
         </div>
 
         <!-- Codes Table -->
-        <div x-show="!loading" class="bg-white rounded-lg shadow overflow-hidden">
+        <div x-show="!loading" class="bg-white rounded-lg shadow overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coins</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Users</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coins</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Users</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                        <th class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200">
                     <template x-for="code in filteredCodes()" :key="code.code">
                         <tr class="hover:bg-gray-50">
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="font-mono font-medium text-gray-900" x-text="code.code"></span>
+                            <td class="px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap">
+                                <span class="font-mono font-medium text-sm sm:text-base text-gray-900" x-text="code.code"></span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-gray-900" x-text="code.coins"></span>
-                                <span class="text-xs text-gray-500">coins</span>
+                            <td class="px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap">
+                                <span class="text-sm sm:text-base text-gray-900" x-text="code.coins"></span>
+                                <span class="text-xs sm:text-sm text-gray-500">coins</span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="text-gray-900" x-text="code.used_by ? code.used_by.length : 0"></span>
+                            <td class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap">
+                                <span class="text-sm sm:text-base text-gray-900" x-text="code.used_by ? code.used_by.length : 0"></span>
                                 <span class="text-gray-500">/</span>
-                                <span class="text-gray-900" x-text="code.max_uses || 1"></span>
-                                <span class="text-xs text-gray-500">uses</span>
+                                <span class="text-sm sm:text-base text-gray-900" x-text="code.max_uses || 1"></span>
+                                <span class="text-xs sm:text-sm text-gray-500">uses</span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap">
+                            <td class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap">
                                 <button 
                                     @click="showUsers(code)"
-                                    class="text-blue-600 hover:text-blue-900 transition-colors duration-200"
+                                    class="text-sm sm:text-base text-blue-600 hover:text-blue-900 transition-colors duration-200"
                                     x-show="code.used_by && code.used_by.length > 0">
                                     View Users
                                 </button>
-                                <span x-show="!code.used_by || code.used_by.length === 0" class="text-gray-500">
-                                    No users yet
+                                <span x-show="!code.used_by || code.used_by.length === 0" class="text-sm sm:text-base text-gray-500">
+                                    No users
                                 </span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-gray-500" x-text="code.description || 'No description'"></td>
-                            <td class="px-6 py-4 whitespace-nowrap text-gray-500" x-text="formatDate(code.created_at)"></td>
-                            <td class="px-6 py-4 whitespace-nowrap">
-                                <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                            <td class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap text-sm sm:text-base text-gray-500" x-text="code.description || 'No description'"></td>
+                            <td class="hidden sm:table-cell px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap text-sm sm:text-base text-gray-500" x-text="formatDate(code.created_at)"></td>
+                            <td class="px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap">
+                                <span class="px-2 inline-flex text-xs sm:text-sm leading-5 font-semibold rounded-full"
                                       :class="getStatusColor(code)"
                                       x-text="getStatusText(code)">
                                 </span>
                             </td>
-                            <td class="px-6 py-4 whitespace-nowrap text-right">
-                                <template x-if="!code.is_active && code.status === 'fully_redeemed'">
-                                    <button @click="deleteCode(code.code)" 
-                                            class="text-red-600 hover:text-red-900 transition-colors duration-200"
-                                            title="Delete Code">
-                                        <i class="fas fa-trash"></i>
+                            <td class="px-3 sm:px-6 py-2 sm:py-4 whitespace-nowrap text-right">
+                                <div class="flex justify-end space-x-2">
+                                    <button @click="showUsers(code)" 
+                                            class="sm:hidden text-blue-600 hover:text-blue-900"
+                                            x-show="code.used_by && code.used_by.length > 0">
+                                        <i class="fas fa-users"></i>
                                     </button>
-                                </template>
+                                    <template x-if="!code.is_active && code.status === 'fully_redeemed'">
+                                        <button @click="deleteCode(code.code)" 
+                                                class="text-red-600 hover:text-red-900 transition-colors duration-200"
+                                                title="Delete Code">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </template>
+                                </div>
                             </td>
                         </tr>
                     </template>
@@ -238,9 +125,9 @@
 
         <!-- Create Code Modal -->
         <div x-show="showCreateModal" 
-             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full"
+             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
              x-transition>
-            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-white">
+            <div class="relative top-20 mx-auto p-4 sm:p-5 border w-full sm:w-96 shadow-lg rounded-lg bg-white">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-bold">Create Admin Code</h3>
                     <button @click="showCreateModal = false" class="text-gray-600 hover:text-gray-800">
@@ -274,11 +161,11 @@
                     </div>
                     <div class="flex justify-end">
                         <button type="button" @click="showCreateModal = false"
-                                class="mr-2 px-4 py-2 text-gray-600 border rounded hover:bg-gray-100">
+                                class="mr-2 px-4 py-2 text-sm text-gray-600 border rounded hover:bg-gray-100">
                             Cancel
                         </button>
                         <button type="submit"
-                                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+                                class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700">
                             Create Code
                         </button>
                     </div>
@@ -288,9 +175,9 @@
 
         <!-- Users Modal -->
         <div x-show="showUsersModal" 
-             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full"
+             class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50"
              x-transition>
-            <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-lg bg-white">
+            <div class="relative top-20 mx-auto p-4 sm:p-5 border w-full sm:w-96 shadow-lg rounded-lg bg-white">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-bold">Code Users</h3>
                     <button @click="showUsersModal = false" class="text-gray-600 hover:text-gray-800">
@@ -298,35 +185,35 @@
                     </button>
                 </div>
                 <div class="mb-4">
-                    <p class="font-mono text-lg mb-2" x-text="'Code: ' + (selectedCode ? selectedCode.code : '')"></p>
-                    <p class="text-sm text-gray-600 mb-4" x-text="selectedCode ? selectedCode.description : ''"></p>
+                    <p class="font-mono text-sm sm:text-lg mb-2" x-text="'Code: ' + (selectedCode ? selectedCode.code : '')"></p>
+                    <p class="text-xs sm:text-sm text-gray-600 mb-4" x-text="selectedCode ? selectedCode.description : ''"></p>
                     
-                    <div class="border rounded-lg overflow-hidden">
+                    <div class="border rounded-lg overflow-hidden overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Used At</th>
+                                    <th class="px-3 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Username</th>
+                                    <th class="hidden sm:table-cell px-3 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">User ID</th>
+                                    <th class="px-3 sm:px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Used At</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <template x-for="user in getUserList(selectedCode)" :key="user.user_id">
                                     <tr class="hover:bg-gray-50">
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <span class="text-gray-900" x-text="'@' + user.username"></span>
+                                        <td class="px-3 sm:px-4 py-2 whitespace-nowrap">
+                                            <span class="text-xs sm:text-sm text-gray-900" x-text="'@' + user.username"></span>
                                         </td>
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <span class="text-gray-600 text-sm" x-text="user.user_id"></span>
+                                        <td class="hidden sm:table-cell px-3 sm:px-4 py-2 whitespace-nowrap">
+                                            <span class="text-xs sm:text-sm text-gray-600" x-text="user.user_id"></span>
                                         </td>
-                                        <td class="px-4 py-2 whitespace-nowrap">
-                                            <span class="text-gray-600 text-sm" x-text="formatDate(user.used_at)"></span>
+                                        <td class="px-3 sm:px-4 py-2 whitespace-nowrap">
+                                            <span class="text-xs sm:text-sm text-gray-600" x-text="formatDate(user.used_at)"></span>
                                         </td>
                                     </tr>
                                 </template>
                                 <template x-if="!selectedCode || !selectedCode.user_details || selectedCode.user_details.length === 0">
                                     <tr>
-                                        <td colspan="3" class="px-4 py-2 text-center text-gray-500">
+                                        <td colspan="3" class="px-3 sm:px-4 py-2 text-center text-xs sm:text-sm text-gray-500">
                                             No users have used this code yet
                                         </td>
                                     </tr>
@@ -337,7 +224,7 @@
                 </div>
                 <div class="flex justify-end mt-4">
                     <button type="button" @click="showUsersModal = false"
-                            class="px-4 py-2 text-gray-600 border rounded hover:bg-gray-100">
+                            class="px-4 py-2 text-sm text-gray-600 border rounded hover:bg-gray-100">
                         Close
                     </button>
                 </div>

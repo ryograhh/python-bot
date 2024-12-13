@@ -1,7 +1,7 @@
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_from_directory
 from threading import Thread
 from api import setup_bot
-from db.database import db  # Updated import for new database structure
+from db.database import db
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from dotenv import load_dotenv
 import json
@@ -23,9 +23,27 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
-# Configure Flask
-app = Flask(__name__)
+# Configure Flask with explicit static folder
+app = Flask(__name__, 
+    static_url_path='/static',
+    static_folder='static'
+)
 CORS(app)
+
+# Ensure static directory exists
+os.makedirs(app.static_folder, exist_ok=True)
+
+# Move index.js to static/js directory
+js_dir = os.path.join(app.static_folder, 'js')
+os.makedirs(js_dir, exist_ok=True)
+
+# Add route to explicitly serve static files
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    """Serve static files with caching headers"""
+    response = send_from_directory(app.static_folder, filename)
+    response.headers['Cache-Control'] = 'no-cache'  # Prevents 304 by forcing revalidation
+    return response
 
 # MongoDB Configuration
 MONGO_URI = os.getenv('MONGO_URI')

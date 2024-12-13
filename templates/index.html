@@ -4,79 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bot Dashboard</title>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="//unpkg.com/alpinejs" defer></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.7/dist/cdn.min.js"></script>
+    <link defer rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.1/css/all.min.css" integrity="sha512-5Hs3dF2AEPkpNAR7UiOHba+lRSJNeM2ECkwxUIxC1Q/FLycGTbNapWXB4tP889k5T5Ju8fs4b1P5z/iB4nMfSQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="{{ url_for('static', filename='js/index.js') }}"></script>
 </head>
 <body class="bg-gray-50">
-    <div class="min-h-screen" x-data="{
-        activeTab: 'users',
-        users: [],
-        transactions: [],
-        searchTerm: '',
-        isLoading: true,
-
-        async init() {
-            try {
-                const usersResponse = await fetch('/api/users');
-                const transactionsResponse = await fetch('/api/transactions');
-                
-                if (!usersResponse.ok || !transactionsResponse.ok) {
-                    throw new Error('Failed to fetch data');
-                }
-
-                this.users = await usersResponse.json();
-                this.transactions = await transactionsResponse.json();
-            } catch (error) {
-                console.error('Error:', error);
-            } finally {
-                this.isLoading = false;
-            }
-        },
-
-        formatDate(dateStr) {
-            if (!dateStr) return 'Never';
-            return new Date(dateStr).toLocaleString();
-        },
-
-        filteredUsers() {
-            const search = this.searchTerm.toLowerCase();
-            return this.users.filter(user => {
-                if (!user || !user.username) return false;
-                return user.username.toLowerCase().includes(search) || 
-                       (user.user_id && user.user_id.toString().includes(search));
-            });
-        },
-
-        filteredTransactions() {
-            const search = this.searchTerm.toLowerCase();
-            return this.transactions.filter(tx => {
-                if (!tx) return false;
-                return (tx.description && tx.description.toLowerCase().includes(search)) || 
-                       (tx.user_id && tx.user_id.toString().includes(search));
-            });
-        }
-    }">
-        <!-- Header -->
+    <div class="min-h-screen" x-data="dashboard">
         <header class="bg-white shadow">
-            <div class="max-w-7xl mx-auto px-4 py-6">
-                <div class="flex justify-between items-center">
-                    <h1 class="text-3xl font-bold text-gray-900">Bot Dashboard</h1>
-                    <div class="flex items-center space-x-6">
-                        <a href="/admin/codes" class="text-indigo-600 hover:text-indigo-800 flex items-center">
-                            <i class="fas fa-key mr-2"></i>
-                            Admin Codes
-                        </a>
-                        <a href="/graph" class="text-blue-600 hover:text-blue-800 flex items-center">
-                            <i class="fas fa-chart-line mr-2"></i>
-                            View Analytics
-                        </a>
-                        <div class="relative">
+            <div class="max-w-7xl mx-auto px-4 py-4 sm:py-6">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
+                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-900">Bot Dashboard</h1>
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6 w-full sm:w-auto">
+                        <div class="flex space-x-4 w-full sm:w-auto">
+                            <a href="/admin/codes" class="text-indigo-600 hover:text-indigo-800 flex items-center text-sm sm:text-base">
+                                <i class="fas fa-key mr-2"></i>
+                                Admin
+                            </a>
+                            <a href="/graph" class="text-blue-600 hover:text-blue-800 flex items-center text-sm sm:text-base">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                Analytics
+                            </a>
+                        </div>
+                        <div class="relative w-full sm:w-64">
                             <input 
                                 type="text" 
                                 x-model="searchTerm"
                                 placeholder="Search..."
-                                class="w-64 px-4 py-2 pr-8 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                class="w-full px-4 py-2 pr-8 rounded-lg border focus:outline-none focus:ring-2 focus:ring-blue-500"
                             >
                             <i class="fas fa-search absolute right-3 top-3 text-gray-400"></i>
                         </div>
@@ -86,7 +42,7 @@
         </header>
 
         <!-- Main Content -->
-        <main class="max-w-7xl mx-auto px-4 py-8">
+        <main class="max-w-7xl mx-auto px-4 py-6 sm:py-8">
             <!-- Loading State -->
             <div x-show="isLoading" class="text-center py-12">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
@@ -95,62 +51,62 @@
 
             <div x-show="!isLoading">
                 <!-- Stats Grid -->
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
                     <!-- Users Card -->
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="bg-white rounded-lg shadow p-4 sm:p-6">
                         <div class="flex items-center">
                             <div class="p-3 rounded-full bg-blue-100">
-                                <i class="fas fa-users text-blue-600 text-xl"></i>
+                                <i class="fas fa-users text-blue-600 text-lg sm:text-xl"></i>
                             </div>
                             <div class="ml-4">
-                                <p class="text-gray-500 text-sm">Total Users</p>
-                                <p class="text-2xl font-bold" x-text="users.length"></p>
+                                <p class="text-gray-500 text-xs sm:text-sm">Total Users</p>
+                                <p class="text-xl sm:text-2xl font-bold" x-text="users.length"></p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Coins Card -->
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="bg-white rounded-lg shadow p-4 sm:p-6">
                         <div class="flex items-center">
                             <div class="p-3 rounded-full bg-green-100">
-                                <i class="fas fa-coins text-green-600 text-xl"></i>
+                                <i class="fas fa-coins text-green-600 text-lg sm:text-xl"></i>
                             </div>
                             <div class="ml-4">
-                                <p class="text-gray-500 text-sm">Total Coins</p>
-                                <p class="text-2xl font-bold" x-text="users.reduce((sum, user) => sum + (user.coins || 0), 0)"></p>
+                                <p class="text-gray-500 text-xs sm:text-sm">Total Coins</p>
+                                <p class="text-xl sm:text-2xl font-bold" x-text="getTotalCoins()"></p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Transactions Card -->
-                    <div class="bg-white rounded-lg shadow p-6">
+                    <div class="bg-white rounded-lg shadow p-4 sm:p-6">
                         <div class="flex items-center">
                             <div class="p-3 rounded-full bg-purple-100">
-                                <i class="fas fa-exchange-alt text-purple-600 text-xl"></i>
+                                <i class="fas fa-exchange-alt text-purple-600 text-lg sm:text-xl"></i>
                             </div>
                             <div class="ml-4">
-                                <p class="text-gray-500 text-sm">Total Transactions</p>
-                                <p class="text-2xl font-bold" x-text="transactions.length"></p>
+                                <p class="text-gray-500 text-xs sm:text-sm">Total Transactions</p>
+                                <p class="text-xl sm:text-2xl font-bold" x-text="transactions.length"></p>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Content Tabs -->
-                <div class="bg-white rounded-lg shadow mb-8">
-                    <div class="border-b border-gray-200">
+                <div class="bg-white rounded-lg shadow mb-6 sm:mb-8">
+                    <div class="border-b border-gray-200 overflow-x-auto">
                         <nav class="flex space-x-4 px-4" aria-label="Tabs">
                             <button 
                                 @click="activeTab = 'users'"
                                 :class="{'border-b-2 border-blue-500': activeTab === 'users'}"
-                                class="px-3 py-4 text-sm font-medium hover:text-gray-700"
+                                class="px-3 py-4 text-xs sm:text-sm font-medium hover:text-gray-700 whitespace-nowrap"
                             >
                                 Users
                             </button>
                             <button 
                                 @click="activeTab = 'transactions'"
                                 :class="{'border-b-2 border-blue-500': activeTab === 'transactions'}"
-                                class="px-3 py-4 text-sm font-medium hover:text-gray-700"
+                                class="px-3 py-4 text-xs sm:text-sm font-medium hover:text-gray-700 whitespace-nowrap"
                             >
                                 Transactions
                             </button>
@@ -158,38 +114,38 @@
                     </div>
 
                     <!-- Tables Section -->
-                    <div class="p-4">
+                    <div class="p-2 sm:p-4">
                         <!-- Users Table -->
                         <div x-show="activeTab === 'users'" class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead>
                                     <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coins</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Daily</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Coins</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Daily</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200">
                                     <template x-for="user in filteredUsers()" :key="user.user_id">
                                         <tr class="hover:bg-gray-50">
-                                            <td class="px-6 py-4">
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4">
                                                 <div class="flex items-center">
-                                                    <div class="flex-shrink-0 h-10 w-10">
-                                                        <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                                                            <span class="text-blue-600 font-medium" x-text="user.username[0].toUpperCase()"></span>
+                                                    <div class="flex-shrink-0 h-8 w-8 sm:h-10 sm:w-10">
+                                                        <div class="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                                            <span class="text-blue-600 font-medium text-xs sm:text-sm" x-text="user.username[0].toUpperCase()"></span>
                                                         </div>
                                                     </div>
-                                                    <div class="ml-4">
-                                                        <div class="text-sm font-medium text-gray-900" x-text="'@' + user.username"></div>
-                                                        <div class="text-sm text-gray-500" x-text="user.user_id"></div>
+                                                    <div class="ml-2 sm:ml-4">
+                                                        <div class="text-xs sm:text-sm font-medium text-gray-900" x-text="'@' + user.username"></div>
+                                                        <div class="text-xs text-gray-500" x-text="user.user_id"></div>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td class="px-6 py-4">
-                                                <span class="text-sm text-gray-900" x-text="user.coins || 0"></span>
-                                                <span class="text-sm text-gray-500"> coins</span>
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4">
+                                                <span class="text-xs sm:text-sm text-gray-900" x-text="user.coins || 0"></span>
+                                                <span class="text-xs sm:text-sm text-gray-500"> coins</span>
                                             </td>
-                                            <td class="px-6 py-4 text-sm text-gray-500" x-text="formatDate(user.last_daily)"></td>
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-500" x-text="formatDate(user.last_daily)"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -201,38 +157,33 @@
                             <table class="min-w-full divide-y divide-gray-200">
                                 <thead>
                                     <tr>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Description</th>
+                                        <th class="px-3 sm:px-6 py-2 sm:py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-200">
                                     <template x-for="tx in filteredTransactions()" :key="tx.user_id + tx.created_at">
                                         <tr class="hover:bg-gray-50">
-                                            <td class="px-6 py-4">
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4">
                                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
-                                                    :class="{
-                                                        'bg-green-100 text-green-800': tx.type === 'daily',
-                                                        'bg-blue-100 text-blue-800': tx.type === 'send',
-                                                        'bg-yellow-100 text-yellow-800': tx.type === 'receive',
-                                                        'bg-purple-100 text-purple-800': tx.type === 'admin_code'
-                                                    }"
+                                                    :class="getTransactionTypeStyle(tx.type)"
                                                     x-text="tx.type">
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4">
-                                                <div class="text-sm font-medium text-gray-900" x-text="users.find(u => u.user_id === tx.user_id)?.username || 'Unknown'"></div>
-                                                <div class="text-sm text-gray-500" x-text="tx.user_id"></div>
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4">
+                                                <div class="text-xs sm:text-sm font-medium text-gray-900" x-text="getUsernameById(tx.user_id)"></div>
+                                                <div class="text-xs text-gray-500" x-text="tx.user_id"></div>
                                             </td>
-                                            <td class="px-6 py-4">
-                                                <span class="text-sm" :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'"
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4">
+                                                <span class="text-xs sm:text-sm" :class="tx.amount > 0 ? 'text-green-600' : 'text-red-600'"
                                                     x-text="(tx.amount > 0 ? '+' : '') + tx.amount + ' coins'">
                                                 </span>
                                             </td>
-                                            <td class="px-6 py-4 text-sm text-gray-900" x-text="tx.description"></td>
-                                            <td class="px-6 py-4 text-sm text-gray-500" x-text="formatDate(tx.created_at)"></td>
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-900 hidden sm:table-cell" x-text="tx.description"></td>
+                                            <td class="px-3 sm:px-6 py-2 sm:py-4 text-xs sm:text-sm text-gray-500" x-text="formatDate(tx.created_at)"></td>
                                         </tr>
                                     </template>
                                 </tbody>
@@ -241,15 +192,15 @@
 
                         <!-- Empty States -->
                         <div x-show="activeTab === 'users' && filteredUsers().length === 0" 
-                            class="text-center py-12">
-                            <i class="fas fa-users text-gray-400 text-4xl mb-4"></i>
-                            <p class="text-gray-500">No users found matching your search.</p>
+                            class="text-center py-8 sm:py-12">
+                            <i class="fas fa-users text-gray-400 text-3xl sm:text-4xl mb-3 sm:mb-4"></i>
+                            <p class="text-gray-500 text-sm sm:text-base">No users found matching your search.</p>
                         </div>
 
                         <div x-show="activeTab === 'transactions' && filteredTransactions().length === 0" 
-                            class="text-center py-12">
-                            <i class="fas fa-exchange-alt text-gray-400 text-4xl mb-4"></i>
-                            <p class="text-gray-500">No transactions found matching your search.</p>
+                            class="text-center py-8 sm:py-12">
+                            <i class="fas fa-exchange-alt text-gray-400 text-3xl sm:text-4xl mb-3 sm:mb-4"></i>
+                            <p class="text-gray-500 text-sm sm:text-base">No transactions found matching your search.</p>
                         </div>
                     </div>
                 </div>
@@ -257,9 +208,9 @@
         </main>
 
         <!-- Footer -->
-        <footer class="bg-white mt-8 py-4">
+        <footer class="bg-white mt-6 sm:mt-8 py-4">
             <div class="max-w-7xl mx-auto px-4">
-                <p class="text-center text-sm text-gray-500">
+                <p class="text-center text-xs sm:text-sm text-gray-500">
                     © 2024 Bot Dashboard. All rights reserved.
                 </p>
             </div>
