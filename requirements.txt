@@ -11,3 +11,4 @@ pymongo[srv]
 certifi
 dnspython
 waitress
+gunicorn

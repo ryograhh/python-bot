@@ -1,7 +1,11 @@
+# server.py
 from flask import Flask, render_template, send_from_directory, jsonify
 from flask_cors import CORS
+from threading import Thread
+from api import setup_bot
 from db.database import db
 from dotenv import load_dotenv
+from waitress import serve
 import os
 import sys
 import logging
@@ -72,3 +76,38 @@ def create_app():
     init_graph_routes(app)
     
     return app
+
+def main():
+    try:
+        load_dotenv()
+        
+        if not os.getenv('MONGO_URI'):
+            raise ValueError("MONGO_URI environment variable is not set")
+
+        app = create_app()
+        
+        # Start Waitress in a separate thread
+        flask_thread = Thread(target=lambda: serve(
+            app,
+            host='0.0.0.0',
+            port=3306,
+            threads=4,  # Adjust based on your needs
+            channel_timeout=120,
+            cleanup_interval=30,
+            ident='ShareBost Production Server'
+        ))
+        flask_thread.daemon = True
+        flask_thread.start()
+
+        # Run the bot in the main thread
+        setup_bot()
+
+    except KeyboardInterrupt:
+        logger.info("Server shutdown requested...")
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Startup error: {str(e)}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,7 @@
 from telegram.ext import ApplicationBuilder, MessageHandler, filters
 import os
 import importlib
+import glob
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -56,8 +57,7 @@ async def message_handler(update, context):
         # Optional: Handle unknown commands
         await update.message.reply_text(f"Unknown command: {command}")
 
-async def setup_bot():
-    """Asynchronous setup of the Telegram bot"""
+def setup_bot():
     # Get token from environment variable
     TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
     
@@ -70,8 +70,8 @@ async def setup_bot():
     # Add handlers for both text messages and documents
     application.add_handler(MessageHandler((filters.TEXT | filters.Document.ALL) & ~filters.COMMAND, message_handler))
     
+
+    # Start the bot
     print("Bot is starting...")
-    # Initialize and start the bot
-    await application.initialize()
-    await application.start()
-    await application.run_polling()
+    application.run_polling()
+    return application
