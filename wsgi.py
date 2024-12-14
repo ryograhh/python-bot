@@ -7,12 +7,20 @@ from dotenv import load_dotenv
 import threading
 import asyncio
 
+async def run_bot_async():
+    """Run the Telegram bot asynchronously"""
+    try:
+        await setup_bot()
+    except Exception as e:
+        print(f"Error in bot thread: {e}")
+
 def run_bot():
-    """Run the Telegram bot in a separate thread with its own event loop"""
+    """Run the bot in a separate thread with proper async handling"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        setup_bot()
+        loop.run_until_complete(run_bot_async())
+        loop.run_forever()
     except Exception as e:
         print(f"Error in bot thread: {e}")
     finally:
