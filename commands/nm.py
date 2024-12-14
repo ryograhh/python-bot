@@ -7,8 +7,11 @@ from Crypto.Cipher import AES
 import os
 import tempfile
 from db.mongodb import db
+from db.models.pastebin import pastebin_db
+from handler.pastebinhandler import pastebin_handler
+from datetime import datetime
 
-description = "Decrypt Netmod content (costs 3-4 coins)"
+description = "Decrypt Netmod content and save to Pastebin (costs 3-4 coins)"
 
 TEXT_COST = 3 
 FILE_COST = 4  
@@ -68,6 +71,7 @@ def handle_nm(encrypted_content, key):
     return message
 
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the command execution"""
     try:
         user_id = str(update.effective_user.id)
         username = update.effective_user.username or "Unknown"
@@ -80,11 +84,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Check if user has enough coins
         if user['coins'] < cost:
             await update.message.reply_text(
-                f"❌ Insufficient coins! You need `{cost}` coins for this operation.\nYour balance: `{user['coins']}` coins",
+                f"❌ Insufficient coins! You need `{cost}` coins for this operation.\n"
+                f"Your balance: `{user['coins']}` coins",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
 
+        # Process file or text input
         if is_file:
             file = await context.bot.get_file(update.message.document.file_id)
             
@@ -96,7 +102,6 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 encrypted_content = f.read().strip()
             
             os.unlink(temp_file_path)
-            
         else:
             # Get encrypted content from message text
             message_parts = update.message.text.split(maxsplit=1)
@@ -131,41 +136,62 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Decryption yielded no content.")
             return
 
-        # Format the decrypted content with code blocks
+        # Format and prepare content for Pastebin
         decrypted_content = "\n".join(decrypted_messages)
-        formatted_content = f"*🔓 Decrypted Content:*\n\n```\n{decrypted_content}\n```"
+        paste_title = f"Decrypted_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Send the decrypted content as a message
-        await update.message.reply_text(formatted_content, parse_mode=ParseMode.MARKDOWN)
+        # First store in MongoDB
+        entry_id = pastebin_db.create_entry(
+            user_id=user_id,
+            content=decrypted_content,
+            title=paste_title,
+            username=username
+        )
 
-        # Save and send as a file
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, encoding='utf-8') as temp_file:
-            temp_file.write(decrypted_content)
-            temp_file_path = temp_file.name
+        # Create Pastebin entry
+        paste_url = pastebin_handler.create_paste(
+            content=decrypted_content,
+            title=f"Decrypted Content for {username}",
+            expiration='1M',  # 1 month expiration
+            private=1  # unlisted
+        )
 
-        # Send the file
-        with open(temp_file_path, 'rb') as file:
-            await context.bot.send_document(
-                chat_id=update.effective_chat.id,
-                document=file,
-                filename='decrypted.txt',
-                caption='🔓 Decrypted content saved in this file'
+        if paste_url:
+            # Update MongoDB with Pastebin URL
+            pastebin_db.update_paste_url(entry_id, paste_url)
+            
+            # Send success message with Pastebin link
+            file_size_kb = len(decrypted_content.encode('utf-8')) / 1024
+            await update.message.reply_text(
+                f"✅ Decryption complete!\n\n"
+                f"🔗 View result: {paste_url}\n\n"
+                f"📊 Details:\n"
+                f"- Size: `{file_size_kb:.2f}` KB\n"
+                f"- Cost: `-{cost}` coins\n"
+                f"- Balance: `{user['coins'] - cost}` coins\n\n"
+                f"🕒 Link expires in 1 month",
+                parse_mode=ParseMode.MARKDOWN
             )
-
-        # Clean up
-        os.unlink(temp_file_path)
+        else:
+            # Fallback to direct message if Pastebin fails
+            await update.message.reply_text(
+                "*🔓 Decrypted Content:*\n\n"
+                f"```\n{decrypted_content}\n```\n\n"
+                "⚠️ Note: Pastebin service unavailable - showing content directly\n"
+                f"Cost: `-{cost}` coins\n"
+                f"Balance: `{user['coins'] - cost}` coins",
+                parse_mode=ParseMode.MARKDOWN
+            )
 
         # Get updated user balance
         updated_user = db.get_user(user_id)
-
-        # Send completion message with file size and balance
-        file_size_kb = len(decrypted_content.encode('utf-8')) / 1024
-        await update.message.reply_text(
-            f"✅ Decryption complete!\n"
-            f"Cost: `-{cost}` coins\n"
-            f"File size: `{file_size_kb:.2f}` KB\n"
-            f"Current balance: `{updated_user['coins']}` coins",
-            parse_mode=ParseMode.MARKDOWN
+        
+        # Log the transaction
+        db.add_transaction(
+            user_id,
+            -cost,
+            'netmod_decrypt',
+            f'Netmod decryption to Pastebin - {paste_title}'
         )
 
     except Exception as e:

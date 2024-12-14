@@ -2,12 +2,15 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from db.database import db
+from db.models.pastebin import pastebin_db
+from handler.pastebinhandler import pastebin_handler
 import json
 import hashlib
 from Crypto.Cipher import AES
 from base64 import b64decode, b64encode
 import os
 import re
+from datetime import datetime
 
 description = "Decrypt encrypted content (costs 4 coins for text, 5 coins for .sks files)"
 admin_bot = True
@@ -144,41 +147,59 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 description=f'SKS decryption ({("file" if is_file else "text")} mode)'
             )
 
-            # Format content
-            header = [f"🎉 *Decrypted Content:* \\(\\-{coin_cost} coins\\)\n```"]
+            # Format content for both display and storage
             content_lines = format_output(json_data)
-            formatted_content = "\n".join(header + content_lines + ["```"])
+            decrypted_content = "\n".join(content_lines)
+            
+            # Generate title for paste
+            paste_title = f"SKS_Decrypted_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-            # Send formatted text with markdown
-            await update.message.reply_text(
-                formatted_content,
-                parse_mode=ParseMode.MARKDOWN_V2
+            # Store in MongoDB first
+            entry_id = pastebin_db.create_entry(
+                user_id=user_id,
+                content=decrypted_content,
+                title=paste_title,
+                username=username
             )
 
-            # Create and send file attachment
-            temp_file_path = os.path.join(os.path.dirname(__file__), "decrypted.txt")
-            with open(temp_file_path, "w", encoding="utf-8") as file:
-                # Remove markdown for file content
-                plain_content = re.sub(r'[`*_~]', '', formatted_content)
-                plain_content = re.sub(r'\\(.)', r'\1', plain_content)
-                file.write(plain_content)
-
-            # Get updated balance for the caption
-            updated_user = db.users.get_user(user_id)
-            caption = (
-                f"💰 Current Balance: {updated_user['coins']} coins\n"
-                f"💸 Cost: {coin_cost} coins\n"
-                f"✨ Thank you for using our service!"
+            # Create Pastebin entry
+            paste_url = pastebin_handler.create_paste(
+                content=decrypted_content,
+                title=f"SKS Decrypted Content for {username}",
+                expiration='1M',  # 1 month expiration
+                private=1  # unlisted
             )
 
-            with open(temp_file_path, "rb") as file:
-                await update.message.reply_document(
-                    document=file,
-                    filename="decrypted.txt",
-                    caption=caption
+            if paste_url:
+                # Update MongoDB with Pastebin URL
+                pastebin_db.update_paste_url(entry_id, paste_url)
+                
+                # Calculate file size
+                file_size_kb = len(decrypted_content.encode('utf-8')) / 1024
+                
+                # Send success message with Pastebin link
+                await update.message.reply_text(
+                    f"✅ Decryption complete!\n\n"
+                    f"🔗 View result: {paste_url}\n\n"
+                    f"📊 Details:\n"
+                    f"- Size: `{file_size_kb:.2f}` KB\n"
+                    f"- Cost: `-{coin_cost}` coins\n"
+                    f"- Balance: `{user['coins'] - coin_cost}` coins\n\n"
+                    f"🕒 Link expires in 1 month",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+            else:
+                # Fallback to sending as message if Pastebin fails
+                formatted_content = f"🎉 *Decrypted Content:*\n```\n{decrypted_content}\n```"
+                await update.message.reply_text(
+                    formatted_content + "\n\n"
+                    "⚠️ Note: Pastebin service unavailable - showing content directly\n"
+                    f"Cost: `-{coin_cost}` coins\n"
+                    f"Balance: `{user['coins'] - coin_cost}` coins",
+                    parse_mode=ParseMode.MARKDOWN
                 )
 
-            os.remove(temp_file_path)
+            updated_user = db.users.get_user(user_id)
 
         except json.JSONDecodeError:
             await update.message.reply_text(
