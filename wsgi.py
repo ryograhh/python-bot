@@ -4,19 +4,47 @@ from waitress import serve
 from api import setup_bot
 import os
 from dotenv import load_dotenv
+import threading
+import asyncio
 
-# Load environment variables first
-load_dotenv()
+def run_bot():
+    """Run the Telegram bot in a separate thread with its own event loop"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        setup_bot()
+    except Exception as e:
+        print(f"Error in bot thread: {e}")
+    finally:
+        loop.close()
 
-# Create the Flask app
+def run_server(app, host, port):
+    """Run the Flask server"""
+    print(f"Starting server on {host}:{port}")
+    serve(app, host=host, port=port, threads=6)
+
+def main():
+    # Load environment variables first
+    load_dotenv()
+    
+    # Create Flask app
+    app = create_app()
+    
+    # Server configuration
+    host = '0.0.0.0'
+    # Get port from environment variable or use default
+    port = int(os.getenv('PORT', 3306))
+    
+    # Start bot in a separate thread
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.daemon = True
+    bot_thread.start()
+    
+    # Run the server in the main thread
+    run_server(app, host, port)
+
+# This ensures the app can be imported by WSGI servers
 app = create_app()
 
-# Setup the bot before starting the server
-setup_bot()
-
 if __name__ == "__main__":
-    host = '0.0.0.0'
-    port = 3306
-    
-    # Start the server (this should be last as it's blocking)
-    serve(app, host=host, port=port, threads=6)
+    main()
