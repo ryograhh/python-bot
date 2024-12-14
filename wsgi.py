@@ -6,6 +6,13 @@ import os
 from dotenv import load_dotenv
 import threading
 import asyncio
+import signal
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals gracefully"""
+    print("Received shutdown signal")
+    # Add any cleanup here if needed
+    exit(0)
 
 async def run_bot_async():
     """Run the Telegram bot asynchronously"""
@@ -20,7 +27,6 @@ def run_bot():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(run_bot_async())
-        loop.run_forever()
     except Exception as e:
         print(f"Error in bot thread: {e}")
     finally:
@@ -32,6 +38,10 @@ def run_server(app, host, port):
     serve(app, host=host, port=port, threads=6)
 
 def main():
+    # Set up signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     # Load environment variables first
     load_dotenv()
     
