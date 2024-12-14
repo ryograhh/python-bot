@@ -6,7 +6,7 @@ import json
 from Crypto.Cipher import AES
 import os
 import tempfile
-from db.mongodb import db
+from db.database import db
 from db.models.pastebin import pastebin_db
 from handler.pastebinhandler import pastebin_handler
 from datetime import datetime
@@ -140,7 +140,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         decrypted_content = "\n".join(decrypted_messages)
         paste_title = f"Decrypted_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # First store in MongoDB
+        # First store in database
         entry_id = pastebin_db.create_entry(
             user_id=user_id,
             content=decrypted_content,
@@ -157,7 +157,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if paste_url:
-            # Update MongoDB with Pastebin URL
+            # Update database with Pastebin URL
             pastebin_db.update_paste_url(entry_id, paste_url)
             
             # Send success message with Pastebin link

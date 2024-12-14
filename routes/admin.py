@@ -41,6 +41,32 @@ def init_admin_routes(app):
             logger.error(f"Error creating admin code: {str(e)}")
             return jsonify({'error': 'Failed to create admin code'}), 500
 
+    @app.route('/api/admin/codes/<code_id>', methods=['DELETE'])
+    def delete_code(code_id):
+        try:
+            # First check if the code exists and is eligible for deletion
+            code = db.admin_codes.admin_codes.find_one({'code': code_id})
+            if not code:
+                return jsonify({'error': 'Code not found'}), 404
+
+            # Check if code is fully redeemed (additional safety check)
+            uses = len(code.get('used_by', []))
+            max_uses = code.get('max_uses', 1)
+            if code.get('is_active') or (uses < max_uses):
+                return jsonify({'error': 'Only fully redeemed codes can be deleted'}), 400
+
+            # Delete the code
+            result = db.admin_codes.admin_codes.delete_one({'code': code_id})
+            
+            if result.deleted_count == 1:
+                return jsonify({'success': True, 'message': 'Code deleted successfully'})
+            else:
+                return jsonify({'error': 'Failed to delete code'}), 500
+                
+        except Exception as e:
+            logger.error(f"Error deleting admin code {code_id}: {str(e)}")
+            return jsonify({'error': 'Failed to delete admin code'}), 500
+
     @app.route('/admin/codes')
     def admin_codes():
         try:

@@ -57,24 +57,70 @@ document.addEventListener('alpine:init', () => {
 
         // Delete code
         async deleteCode(codeId) {
-            if (!confirm('Are you sure you want to delete this code?')) return;
+            const result = await Swal.fire({
+                title: 'Delete Code',
+                text: 'Are you sure you want to delete this code? This action cannot be undone.',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc2626', // red-600
+                cancelButtonColor: '#6b7280', // gray-500
+                confirmButtonText: 'Yes, delete it',
+                cancelButtonText: 'Cancel',
+                reverseButtons: true
+            });
+            
+            if (!result.isConfirmed) return;
             
             try {
-                const response = await fetch(`/api/admin/codes/${codeId}`, {
-                    method: 'DELETE'
+                // Show loading state
+                Swal.fire({
+                    title: 'Deleting...',
+                    allowOutsideClick: false,
+                    showConfirmButton: false,
+                    didOpen: () => {
+                        Swal.showLoading();
+                    }
                 });
+                
+                const response = await fetch(`/api/admin/codes/${codeId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'same-origin'
+                });
+                
+                const data = await response.json();
+                
                 if (response.ok) {
+                    // Remove the code from the local state
                     this.codes = this.codes.filter(code => code.code !== codeId);
+                    
+                    // Show success message
+                    await Swal.fire({
+                        title: 'Deleted!',
+                        text: 'The code has been deleted successfully.',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    });
                 } else {
-                    const data = await response.json();
                     throw new Error(data.error || 'Failed to delete code');
                 }
             } catch (e) {
-                this.error = e.message;
-                setTimeout(() => this.error = null, 3000);
+                console.error('Error deleting code:', e);
+                
+                // Show error message
+                await Swal.fire({
+                    title: 'Error!',
+                    text: e.message || 'Failed to delete code',
+                    icon: 'error',
+                    confirmButtonColor: '#3b82f6' // blue-500
+                });
             }
         },
-
+        
         // Show users modal
         showUsers(code) {
             this.selectedCode = code;

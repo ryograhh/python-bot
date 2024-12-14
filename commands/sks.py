@@ -154,7 +154,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Generate title for paste
             paste_title = f"SKS_Decrypted_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-            # Store in MongoDB first
+            # Store in database first
             entry_id = pastebin_db.create_entry(
                 user_id=user_id,
                 content=decrypted_content,
@@ -171,7 +171,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
             if paste_url:
-                # Update MongoDB with Pastebin URL
+                # Update database with Pastebin URL
                 pastebin_db.update_paste_url(entry_id, paste_url)
                 
                 # Calculate file size

@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from datetime import datetime
-from db.mongodb import db
+from db.database import db
 import random
 
 description = "Gambling game with colors (win up to 5x your bet)"
@@ -32,7 +32,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = str(update.effective_user.id)
         username = update.effective_user.username or "Unknown"
         
-        # Get or create user from MongoDB
+        # Get or create user from database
         user = db.get_user(user_id, username)
         
         if len(message_parts) == 1:
@@ -91,7 +91,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Deduct bet amount using MongoDB
+        # Deduct bet amount using database
         db.update_user_coins(user_id, -bet_amount)
         db.add_transaction(user_id, -bet_amount, 'game', f'Color game bet on {color}')
 

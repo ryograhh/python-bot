@@ -21,14 +21,14 @@
         async init() {
             try {
                 const [txResponse, usersResponse] = await Promise.all([
-                    fetch('/api/transactions'),
-                    fetch('/api/users')
+                    fetch('/api/graph/transactions'),  // Updated endpoint
+                    fetch('/api/graph/users')         // Updated endpoint
                 ]);
-
+        
                 if (!txResponse.ok || !usersResponse.ok) {
                     throw new Error('Failed to fetch data');
                 }
-
+        
                 this.transactions = await txResponse.json();
                 this.users = await usersResponse.json();
                 this.initChart();
@@ -38,7 +38,7 @@
                 this.isLoading = false;
             }
         },
-
+        
         initChart() {
             const ctx = document.getElementById('coinChart').getContext('2d');
             const processedData = this.processTransactionData();

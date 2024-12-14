@@ -10,3 +10,4 @@ pycryptodome
 pymongo[srv]
 certifi
 dnspython
+waitress

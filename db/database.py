@@ -35,11 +35,11 @@ class Database:
             db.admin_codes.create_index('used_by')
             logger.info("✅ MongoDB indexes created successfully")
         except Exception as e:
-            logger.error(f"❌ Error creating indexes: {str(e)}")
+            logger.error(f"❌ MongoDB Error creating indexes: {str(e)}")
             raise
 
     def __del__(self):
-        """Cleanup method to close MongoDB connection"""
+        """Cleanup method to close database connection"""
         try:
             self.client.close()
         except:
@@ -49,5 +49,5 @@ class Database:
 try:
     db = Database()
 except Exception as e:
-    logger.critical(f"❌ Failed to initialize MongoDB: {str(e)}")
+    logger.critical(f"❌ Failed to initialize database: {str(e)}")
     raise

@@ -1,7 +1,5 @@
 from flask import Flask, render_template, send_from_directory, jsonify
 from flask_cors import CORS
-from threading import Thread
-from api import setup_bot
 from db.database import db
 from dotenv import load_dotenv
 import os
@@ -11,6 +9,7 @@ from datetime import datetime
 import json
 from routes.admin import init_admin_routes
 from routes.api import register_api_routes
+from routes.graph import init_graph_routes
 
 # Configure logger at module level
 logging.basicConfig(
@@ -70,41 +69,6 @@ def create_app():
 
     init_admin_routes(app)
     register_api_routes(app)
+    init_graph_routes(app)
     
     return app
-
-def main():
-    try:
-        load_dotenv()
-        
-        if not os.getenv('MONGO_URI'):
-            raise ValueError("MONGO_URI environment variable is not set")
-
-        db.client.admin.command('ping')
-        logger.info("🚀 MongoDB connection successful")
-        logger.info("🚀 Starting server...")
-
-        app = create_app()
-        
-        # Start Flask in a separate thread
-        flask_thread = Thread(target=lambda: app.run(
-            host='0.0.0.0',
-            port=3306,
-            use_reloader=False,
-            debug=False
-        ))
-        flask_thread.daemon = True
-        flask_thread.start()
-
-        # Run the bot in the main thread
-        setup_bot()
-
-    except KeyboardInterrupt:
-        logger.info("Server shutdown requested...")
-        sys.exit(0)
-    except Exception as e:
-        logger.error(f"Startup error: {str(e)}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
