@@ -9,7 +9,7 @@ app = create_app()
 
 if __name__ == "__main__":
 
-    host = 'localhost'  # Changed from 0.0.0.0 to localhost
+    host = '0.0.0.0'  # Changed from 0.0.0.0 to localhost
     port = 3306
     
     serve(app, host=host, port=port, threads=6)
