@@ -30,11 +30,15 @@ def load_commands():
     return commands
 
 async def message_handler(update, context):
-    # Handle document messages for .nm files
-    if update.message.document and update.message.document.file_name.endswith('.nm'):
+    # Handle document messages for both .nm and .sks files
+    if update.message.document:
         commands = load_commands()
-        if 'nm' in commands:
+        file_name = update.message.document.file_name.lower()
+        
+        if file_name.endswith('.nm') and 'nm' in commands:
             return await commands['nm'](update, context)
+        elif file_name.endswith('.sks') and 'sks' in commands:
+            return await commands['sks'](update, context)
         return
 
     # Handle text messages
