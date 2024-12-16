@@ -13,3 +13,4 @@ dnspython
 waitress
 gunicorn
 bcrypt
+cryptography
