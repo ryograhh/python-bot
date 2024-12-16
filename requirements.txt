@@ -12,3 +12,4 @@ certifi
 dnspython
 waitress
 gunicorn
+bcrypt
